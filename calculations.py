@@ -42,6 +42,15 @@ def calculate_metrics(
         etf_balance_eur = initial_investment / initial_fx_rate
         etf_cashflows_arr = [-initial_investment]
 
+    # Helper for handling variable rates (Monte Carlo support)
+    def get_rate(rate_input, year_idx):
+        if isinstance(rate_input, (list, np.ndarray)):
+            # year_idx is 0-based index for the current year being calculated
+            if year_idx < len(rate_input):
+                 return rate_input[year_idx]
+            return rate_input[-1] # Fallback
+        return rate_input
+
     # 3. Projekce
     yearly_cashflows_arr = [-initial_investment]
     total_cf_sum = 0
@@ -51,20 +60,26 @@ def calculate_metrics(
     
     # Trackers
     current_mortgage_balance = mortgage_amount
+    current_value = purchase_price
 
     # Lists
     property_values = []
     mortgage_balances = []
     
     for year in range(1, int(holding_period) + 1):
+        year_idx = year - 1
+        
         # a) Value Increase
-        current_value = purchase_price * ((1 + appreciation_rate / 100) ** year)
+        # Support variable appreciation rate
+        rate_app = get_rate(appreciation_rate, year_idx)
+        current_value *= (1 + rate_app / 100)
         property_values.append(current_value)
         
         # b) Inflation
         if year > 1:
-            current_monthly_rent *= (1 + rent_growth_rate / 100)
-            current_monthly_expenses *= (1 + rent_growth_rate / 100)
+            rate_rent = get_rate(rent_growth_rate, year_idx)
+            current_monthly_rent *= (1 + rate_rent / 100)
+            current_monthly_expenses *= (1 + rate_rent / 100)
         
         # c) Cashflow Components
         curr_annual_gross_rent = current_monthly_rent * (12 - vacancy_months)
@@ -103,7 +118,8 @@ def calculate_metrics(
         
         # ETF
         if etf_comparison:
-            etf_balance_eur *= (1 + etf_return / 100)
+            rate_etf = get_rate(etf_return, year_idx)
+            etf_balance_eur *= (1 + rate_etf / 100)
             
             year_contribution_czk = 0
             if curr_annual_cf < 0:
@@ -151,3 +167,57 @@ def calculate_metrics(
         "monthly_cashflow_y1": annual_cashflow_year1 / 12,
         "tax_paid_y1": tax_y1
     }
+
+def run_monte_carlo(
+    n_simulations,
+    # Base params (same as calculate_metrics)
+    purchase_price, down_payment, one_off_costs,
+    interest_rate, loan_term_years,
+    monthly_rent, monthly_expenses, vacancy_months, tax_rate,
+    holding_period,
+    initial_fx_rate, fx_appreciation,
+    # Variable base params (Mean)
+    appreciation_rate_mean, rent_growth_rate_mean,
+    etf_comparison, etf_return_mean,
+    # Volatility params (Std Dev)
+    appreciation_rate_std, rent_growth_rate_std, etf_return_std
+):
+    results = []
+    holding_years = int(holding_period)
+    
+    # Pre-generate random scenarios for performance
+    # Shape: (n_simulations, holding_years)
+    app_scenarios = np.random.normal(appreciation_rate_mean, appreciation_rate_std, size=(n_simulations, holding_years))
+    rent_scenarios = np.random.normal(rent_growth_rate_mean, rent_growth_rate_std, size=(n_simulations, holding_years))
+    
+    etf_scenarios = None
+    if etf_comparison:
+        etf_scenarios = np.random.normal(etf_return_mean, etf_return_std, size=(n_simulations, holding_years))
+    
+    for i in range(n_simulations):
+        # Extract specific scenario rates
+        app_rates = app_scenarios[i]
+        rent_rates = rent_scenarios[i]
+        etf_rates = etf_scenarios[i] if etf_comparison else 0
+        
+        res = calculate_metrics(
+            purchase_price=purchase_price,
+            down_payment=down_payment,
+            one_off_costs=one_off_costs,
+            interest_rate=interest_rate,
+            loan_term_years=loan_term_years,
+            monthly_rent=monthly_rent,
+            monthly_expenses=monthly_expenses,
+            vacancy_months=vacancy_months,
+            tax_rate=tax_rate,
+            appreciation_rate=app_rates,   # Passing array
+            rent_growth_rate=rent_rates,   # Passing array
+            holding_period=holding_period,
+            etf_comparison=etf_comparison,
+            etf_return=etf_rates,          # Passing array
+            initial_fx_rate=initial_fx_rate,
+            fx_appreciation=fx_appreciation
+        )
+        results.append(res)
+        
+    return results
