@@ -138,7 +138,8 @@ with st.sidebar.expander("✨ Optimalizace Strategie", expanded=False):
                     etf_return=0,
                     initial_fx_rate=25,
                     fx_appreciation=0,
-                    time_test_vars=time_test_config
+                    time_test_vars=time_test_config,
+                    sale_fee_percent=sale_fee_percent
                 )
                 
                 if res['irr'] > best_irr:
