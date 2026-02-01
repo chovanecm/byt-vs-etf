@@ -42,10 +42,14 @@ def render_sidebar():
                 time_test_years = 0
 
             st.markdown("---")
-            st.markdown("**Alternativní investice (ETF)**")
-            etf_comparison = st.checkbox("Porovnat s ETF", value=True, key="etf_comparison")
+            st.markdown("**Benchmark / Opportunity Cost**")
+            etf_comparison = st.checkbox("Porovnat s ETF / Alternativou", value=True, key="etf_comparison")
             if etf_comparison:
-                etf_return = st.number_input("Očekávaný výnos ETF (% p.a.)", min_value=0.0, value=8.0, step=0.5, key="etf_return")
+                etf_return = st.number_input(
+                    "Benchmark / Alternativní výnos (% p.a.)", 
+                    min_value=0.0, value=8.0, step=0.5, key="etf_return",
+                    help="Výnos, který byste získali, kdybyste peníze z prodeje nemovitosti investovali jinam (ETF, jiná nemovitost...).\nSlouží k určení bodu zvratu, kdy se vyplatí nemovitost prodat."
+                )
                 initial_fx_rate = st.number_input("Kurz CZK/EUR (nákup)", min_value=10.0, value=25.0, step=0.1, key="initial_fx_rate")
                 fx_appreciation = st.slider("Změna kurzu (% p.a.)", -5.0, 5.0, 0.0, 0.1, help="+% = posílení EUR, -% = oslabení EUR", key="fx_appreciation")
             else:

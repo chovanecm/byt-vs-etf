@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import calculations
+import altair as alt
 
 def render_comparison_tab(inputs, metrics, derived_metrics):
     etf_comparison = inputs['etf_comparison']
@@ -81,5 +83,10 @@ def render_comparison_tab(inputs, metrics, derived_metrics):
         
         df_comparison = pd.DataFrame(comparison_data)
         st.table(df_comparison)
+        
+        st.divider()
+        st.subheader("🔍 Opportunity Cost: Kdy prodat?")
+        st.info("👉 Podrobnou analýzu Opportunity Cost a strategie prodeje v čase najdete nyní na záložce **Strategie**.")
+            
     else:
-        st.info("Pro zobrazení porovnání zapněte možnost 'Porovnat s ETF' v levém panelu v sekci 'Alternativní investice'.")
+        st.info("Pro zobrazení porovnání zapněte možnost 'Porovnat s ETF' v levém panelu v sekci 'Adv. / Opportunity Cost'.")
