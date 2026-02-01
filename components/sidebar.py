@@ -4,13 +4,6 @@ import scenario_manager
 
 def render_sidebar():
     st.sidebar.header("⚙️ Vstupy")
-    
-    # Onboarding trigger button
-    if st.sidebar.button("🎓 Zobrazit průvodce", help="Načíst připravené scénáře", use_container_width=True):
-        st.session_state['show_onboarding'] = True
-        st.rerun()
-    
-    st.sidebar.markdown("---")
 
     # Definice vizuálního layoutu (kontejnery)
     # 1. Sekce: Nákup
