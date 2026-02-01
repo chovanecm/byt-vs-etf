@@ -1,5 +1,6 @@
-streamlit
-pandas
-plotly
-numpy
-numpy-financial
+streamlit==1.53.1
+pandas==2.3.3
+plotly==6.5.2
+numpy==2.4.1
+numpy-financial==1.0.0
+watchdog==6.0.0
