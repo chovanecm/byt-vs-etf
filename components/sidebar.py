@@ -169,10 +169,34 @@ def render_sidebar():
         target_ltv = st.slider("LTV (%)", 0, 100, step=5, key="target_ltv_input")
         
         # Přepočet kapitálu podle LTV
-        down_payment = purchase_price * (1 - target_ltv / 100)
-        mortgage_amount = purchase_price - down_payment
         
-        st.caption(f"Vlastní kapitál: {down_payment/1_000_000:.2f} mil. Kč | Úvěr: {mortgage_amount/1_000_000:.2f} mil. Kč")
+        # 1. Spočítáme teoretickou výši hypotéky (zaokrouhleně)
+        # Banky většinou neposkytují úvěry na haléře. Zaokrouhlujeme na tisíce dolů/nahoru?
+        # Zde spíše dochází k floating point erroru při odečítání.
+        # purchase_price (5.45 M) * (90/100) = 4.905 M
+        # User claims 4.91 M shown. That is rounding.
+        # User claims "úvěr byl 4 950 000".
+        # 5.45 * 0.9 = 4.905. 
+        # Wait, 5 450 000 * 0.9 = 4 905 000.
+        # User says: "vlastní kapitál: 0.54 | Úvěr: 4.91". 
+        # 0.54 + 4.91 = 5.45. This matches.
+        # But user says: "myslim že tam někde dochází k zaokrouhlovacím chybám, protože ten úvěr byl 4 950 000".
+        # If Loan = 4,950,000 and Price = 5,450,000.
+        # LTV = 4950000 / 5450000 = 0.90825... = 90.8%.
+        # So if user selects 90% LTV, loan should be 4 905 000.
+        # Why does user expect 4 950 000? Maybe purchase price was 5.5M?
+        # Or maybe user INPUTted loan amount directly in previous versions?
+        # Current logic calculates Mortgage based on Price & LTV.
+        # Ideally, we should allow precise override of Mortgage Amount OR LTV.
+        
+        # Let's clean up the float display first to be accurate.
+        
+        mortgage_amount_raw = purchase_price * (target_ltv / 100.0)
+        # Zaokrouhlení na celé koruny kvůli float chybám (např. 4905000.00000001)
+        mortgage_amount = round(mortgage_amount_raw)
+        down_payment = purchase_price - mortgage_amount
+        
+        st.caption(f"Vlastní kapitál: {down_payment/1_000_000:.3f} mil. Kč | Úvěr: {mortgage_amount/1_000_000:.3f} mil. Kč")
 
     # Return inputs as a dictionary
     return {

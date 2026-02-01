@@ -13,13 +13,15 @@ from views.monte_carlo import render_monte_carlo_tab
 # Nastavení stránky
 st.set_page_config(page_title="Investiční kalkulačka", layout="wide", initial_sidebar_state="expanded")
 
-# Zvětšení šířky sidebaru pomocí CSS
+# Zvětšení šířky sidebaru pomocí CSS (pouze na desktopu)
 st.markdown(
     """
     <style>
-    [data-testid="stSidebar"] {
-        min-width: 500px;
-        max-width: 500px;
+    @media (min-width: 992px) {
+        [data-testid="stSidebar"] {
+            min-width: 500px;
+            max-width: 500px;
+        }
     }
     </style>
     """,

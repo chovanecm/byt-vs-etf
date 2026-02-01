@@ -146,6 +146,9 @@ def render_strategy_tab(inputs, metrics, derived_metrics):
         
         equity_locked_user = user_price_override - current_mtg_balance # Simple equity at end of year
         
+        # --- DEBUG INFO ---
+        # st.caption(f"🔧 DIAGNOSTIKA: Cena={user_price_override/1e6:.2f}M, Dluh={current_mtg_balance/1e6:.2f}M, Equity(Hold)={equity_locked_user/1e6:.2f}M, Cash(Sell)={net_liquidation_value_user/1e6:.2f}M")
+        
         c_dec1, c_dec2 = st.columns([1, 1])
         
         with c_dec1:

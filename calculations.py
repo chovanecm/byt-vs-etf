@@ -484,9 +484,15 @@ def project_future_wealth(
             # Pokud pmt > 0 -> snižuje dluh.
             # Zůstatek hypotéky by měl být kladné číslo (velikost dluhu).
             # Použijeme logiku: Zůstatek = FV(rate, 12, pmt, -curr_mtg)
-            # Výsledek bude záporný (z pohledu banky závazek), převedeme na abs.
+            # Výsledek bude kladný (zbytek dluhu), pokud jsme nesplatili vše.
             res = npf.fv(monthly_rate, 12, monthly_payment, -curr_mtg)
-            curr_mtg = -res
+            curr_mtg = res
+            
+            # Pokud je výsledek záporný (přeplatek?), dluh je 0.
+            # FV convention: PV=-Debt. FV=+RemainingDebt.
+            # If we overpay (PMT very high), FV becomes larger positive? 
+            # No. PV+PMT+FV=0. -100 + 200 + FV = 0 -> FV = -100.
+            # So if we overpay, FV becomes negative.
             if curr_mtg < 0: curr_mtg = 0
             
         equity_hold = curr_val - curr_mtg
