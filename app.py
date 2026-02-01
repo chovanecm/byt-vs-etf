@@ -4,9 +4,18 @@ import numpy as np
 import numpy_financial as npf
 import plotly.express as px
 import plotly.graph_objects as go
+import calculations  # Import externích výpočtů
 
 # Nastavení stránky
 st.set_page_config(page_title="Investiční kalkulačka", layout="wide", initial_sidebar_state="expanded")
+
+# Inicializace session state
+if "target_ltv_input" not in st.session_state:
+    st.session_state["target_ltv_input"] = 80
+if "holding_period_input" not in st.session_state:
+    st.session_state["holding_period_input"] = 10
+if "input_type_mode" not in st.session_state:
+    st.session_state["input_type_mode"] = "LTV (%)"
 
 st.title("🏢 Analýza Investičního Bytu")
 st.markdown("Interaktivní nástroj pro modelování výnosnosti investice do nemovitosti.")
@@ -21,10 +30,10 @@ with st.sidebar.expander("💰 Nákup a financování", expanded=True):
     purchase_price = purchase_price_m * 1_000_000
 
     # Vlastní kapitál
-    input_type = st.radio("Zadat vlastní kapitál:", ["LTV (%)", "Částka (mil. Kč)"], horizontal=True)
+    input_type = st.radio("Zadat vlastní kapitál:", ["LTV (%)", "Částka (mil. Kč)"], horizontal=True, key="input_type_mode")
     
     if input_type == "LTV (%)":
-        target_ltv = st.slider("Požadované LTV (%)", 0, 100, 80, 5, help="Loan-to-Value: Kolik % ceny tvoří hypotéka.")
+        target_ltv = st.slider("Požadované LTV (%)", 0, 100, step=5, help="Loan-to-Value: Kolik % ceny tvoří hypotéka.", key="target_ltv_input")
         down_payment = purchase_price * (1 - target_ltv / 100)
         st.write(f"💵 Vlastní zdroje: **{down_payment / 1_000_000:.2f} mil. Kč**")
     else:
@@ -58,7 +67,7 @@ with st.sidebar.expander("📈 Tržní predikce", expanded=False):
 
 # Sekce 4: Strategie
 st.sidebar.subheader("Strategie")
-holding_period = st.sidebar.slider("Doba držení (roky)", 1, 30, 10, 1)
+holding_period = st.sidebar.slider("Doba držení (roky)", 1, 30, step=1, key="holding_period_input")
 
 # Sekce 5: Alternativní investice
 with st.sidebar.expander("📊 Alternativa (ETF)", expanded=False):
@@ -74,6 +83,71 @@ with st.sidebar.expander("📊 Alternativa (ETF)", expanded=False):
         etf_return = 0
         initial_fx_rate = 25.0
         fx_appreciation = 0
+
+# Sekce 6: Optimalizace
+st.sidebar.markdown("---")
+with st.sidebar.expander("✨ Optimalizace Strategie", expanded=False):
+    st.markdown("Najdi nejlepší kombinaci LTV a Doby držení pro max. IRR.")
+    opt_min_ltv = st.number_input("Min. LTV (%)", 0, 100, 20, 5)
+    opt_max_ltv = st.number_input("Max. LTV (%)", 0, 100, 90, 5)
+    
+    if st.button("🔍 Najít optimální strategii"):
+        best_irr = -999.0
+        best_ltv = 0
+        best_years = 0
+        
+        progress_bar = st.progress(0)
+        ltv_range = range(int(opt_min_ltv), int(opt_max_ltv) + 1, 5)
+        total_steps = len(ltv_range)
+        
+        for i, try_ltv in enumerate(ltv_range):
+            progress_bar.progress((i + 1) / total_steps)
+            
+            for try_year in range(1, 31):
+                try_down_payment = purchase_price * (1 - try_ltv / 100)
+                
+                # Předpoklad: Standardní daň 15% (není v UI)
+                res = calculations.calculate_metrics(
+                    purchase_price=purchase_price,
+                    down_payment=try_down_payment,
+                    one_off_costs=one_off_costs,
+                    interest_rate=interest_rate,
+                    loan_term_years=loan_term_years,
+                    monthly_rent=monthly_rent,
+                    monthly_expenses=monthly_expenses,
+                    vacancy_months=vacancy_months,
+                    tax_rate=15.0, 
+                    appreciation_rate=appreciation_rate,
+                    rent_growth_rate=rent_growth_rate,
+                    holding_period=try_year,
+                    etf_comparison=False,
+                    etf_return=0,
+                    initial_fx_rate=25,
+                    fx_appreciation=0
+                )
+                
+                if res['irr'] > best_irr:
+                    best_irr = res['irr']
+                    best_ltv = try_ltv
+                    best_years = try_year
+        
+        progress_bar.empty()
+        st.session_state['opt_result'] = {
+            'ltv': best_ltv,
+            'years': best_years,
+            'irr': best_irr
+        }
+    
+    if 'opt_result' in st.session_state:
+        res = st.session_state['opt_result']
+        st.success(f"**Nalezeno:**\n\nLTV: {res['ltv']} %\n\nDoba: {res['years']} let\n\nIRR: {res['irr']:.2f} %")
+        
+        def apply_strategy(ltv, years):
+            st.session_state['input_type_mode'] = "LTV (%)"
+            st.session_state['target_ltv_input'] = ltv
+            st.session_state['holding_period_input'] = years
+            
+        st.button("🚀 Použít tuto strategii", on_click=apply_strategy, args=(res['ltv'], res['years']))
 
 
 # --- Výpočty ---

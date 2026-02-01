@@ -1,0 +1,22 @@
+{
+    "Test1": {
+        "purchase_price_m": 6.0,
+        "input_type_radio": "LTV (%)",
+        "target_ltv_slider": 90,
+        "down_payment_m": 1.0,
+        "one_off_costs": 150000,
+        "interest_rate": 4.5,
+        "loan_term_years": 30,
+        "monthly_rent": 18000,
+        "monthly_expenses": 3500,
+        "vacancy_months": 1.0,
+        "tax_rate": 15,
+        "appreciation_rate": 3.0,
+        "rent_growth_rate": 2.0,
+        "holding_period_slider": 7,
+        "etf_comparison": true,
+        "etf_return": 8.0,
+        "initial_fx_rate": 25.0,
+        "fx_appreciation": -1.0
+    }
+}
