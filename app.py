@@ -9,6 +9,19 @@ import calculations  # Import externích výpočtů
 # Nastavení stránky
 st.set_page_config(page_title="Investiční kalkulačka", layout="wide", initial_sidebar_state="expanded")
 
+# Zvětšení šířky sidebaru pomocí CSS
+st.markdown(
+    """
+    <style>
+    [data-testid="stSidebar"] {
+        min-width: 500px;
+        max-width: 500px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Inicializace session state
 if "target_ltv_input" not in st.session_state:
     st.session_state["target_ltv_input"] = 80
@@ -21,96 +34,101 @@ st.title("🏢 Analýza Investičního Bytu")
 st.markdown("Interaktivní nástroj pro modelování výnosnosti investice do nemovitosti.")
 
 # --- Sidebar Vstupy ---
-st.sidebar.header("⚙️ Parametry investice")
+st.sidebar.header("⚙️ Vstupy")
 
-# Sekce 1: Nákup a Hypotéka
-with st.sidebar.expander("💰 Nákup a financování", expanded=True):
-    # Cena nemovitosti
-    purchase_price_m = st.number_input("Kupní cena bytu (v mil. Kč)", min_value=1.0, value=5.0, step=0.1)
-    purchase_price = purchase_price_m * 1_000_000
+# Definice vizuálního layoutu (kontejnery)
+# 1. Sekce: Nákup
+c_buy = st.sidebar.container()
+# 2. Sekce: Nájem
+c_rent = st.sidebar.container()
+# 3. Sekce: Hypotéka a Strategie
+c_strat = st.sidebar.container()
+# 4. Sekce: Pokročilé (Daně, ETF)
+c_adv = st.sidebar.container()
 
-    # Vlastní kapitál
-    input_type = st.radio("Zadat vlastní kapitál:", ["LTV (%)", "Částka (mil. Kč)"], horizontal=True, key="input_type_mode")
-    
-    if input_type == "LTV (%)":
-        target_ltv = st.slider("Požadované LTV (%)", 0, 100, step=5, help="Loan-to-Value: Kolik % ceny tvoří hypotéka.", key="target_ltv_input")
-        down_payment = purchase_price * (1 - target_ltv / 100)
-        st.write(f"💵 Vlastní zdroje: **{down_payment / 1_000_000:.2f} mil. Kč**")
-    else:
-        down_payment_m = st.number_input("Vlastní kapitál (v mil. Kč)", min_value=0.0, max_value=purchase_price_m, value=1.0, step=0.1)
-        down_payment = down_payment_m * 1_000_000
-        current_ltv = 100 * (1 - down_payment / purchase_price) if purchase_price > 0 else 0
-        st.write(f"📊 Odpovídá LTV: **{current_ltv:.1f} %**")
-
-    # Jednorázové náklady
-    one_off_costs = st.number_input("Jednorázové náklady (Kč)", min_value=0, value=150_000, step=10_000, help="Provize RK, právní servis, daně, renovace.")
-
-    mortgage_amount = purchase_price - down_payment
-    if mortgage_amount < 0:
-        mortgage_amount = 0
-
-    st.markdown("---")
-    st.markdown("**Hypotéka**")
-    interest_rate = st.number_input("Úroková sazba (%)", min_value=0.0, value=5.4, step=0.1)
-    loan_term_years = st.number_input("Doba splácení (roky)", min_value=1, max_value=40, value=30, step=1)
-
-# Sekce 2: Cashflow
-with st.sidebar.expander("🏠 Nájem a provoz", expanded=True):
-    monthly_rent = st.number_input("Měsíční nájemné (Kč)", min_value=0, value=18_000, step=500)
-    monthly_expenses = st.number_input("Měsíční náklady (Kč)", min_value=0, value=3_500, step=100, help="Fond oprav, pojištění, správa, daň z nemovitosti")
-    vacancy_months = st.slider("Neobsazenost (měsíce/rok)", 0.0, 3.0, 1.0, 0.1, help="Průměrný počet měsíců v roce, kdy byt nevydělává.")
-
-# Sekce 2b: Daně a Poplatky
-with st.sidebar.expander("💸 Daně a Poplatky", expanded=False):
-    tax_rate = st.number_input("Daň z příjmu (%)", min_value=0.0, max_value=100.0, value=15.0, step=1.0, help="Sazba daně z příjmu (nájem i zisk z prodeje).", key="tax_rate")
-    
-    sale_fee_percent = st.number_input("Poplatek při prodeji (%)", min_value=0.0, max_value=20.0, value=3.0, step=0.5, help="Např. provize realitní kanceláři (z prodejní ceny).", key="sale_fee_percent")
-
-    st.markdown("---")
-    time_test_enabled = st.checkbox("Zohlednit časový test", value=True, help="Osvobození od daně ze zisku při prodeji po určité době.", key="time_test_enabled")
-    if time_test_enabled:
-        time_test_years = st.number_input("Délka časového testu (roky)", min_value=0, value=10, step=1, key="time_test_years")
-    else:
-        time_test_years = 10 # Default fall
-
-# Sekce 3: Projekce (Trh)
-with st.sidebar.expander("📈 Tržní predikce", expanded=False):
-    appreciation_rate = st.slider("Růst ceny nemovitosti (% p.a.)", 0.0, 10.0, 3.0, 0.1)
-    rent_growth_rate = st.slider("Inflace nájmu a nákladů (% p.a.)", 0.0, 10.0, 2.0, 0.1)
-
-# Sekce 4: Strategie
-st.sidebar.subheader("Strategie")
-holding_period = st.sidebar.slider("Doba držení (roky)", 1, 30, step=1, key="holding_period_input")
-
-# Sekce 5: Alternativní investice
-with st.sidebar.expander("📊 Alternativa (ETF)", expanded=False):
-    etf_comparison = st.checkbox("Porovnat s ETF", value=True)
-    if etf_comparison:
-        etf_return = st.number_input("Očekávaný výnos ETF (% p.a.)", min_value=0.0, value=8.0, step=0.5)
+# --- A. POKROČILÉ NASTAVENÍ (Spouštíme nejdřív kvůli závislostem) ---
+with c_adv:
+    with st.expander("⚙️ Pokročilé (Daně, ETF)", expanded=False):
+        st.markdown("**Daně**")
+        tax_rate = st.number_input("Daň z příjmu (%)", min_value=0.0, max_value=100.0, value=15.0, step=1.0, key="tax_rate")
         
-        st.markdown("**Kurzové riziko (CZK/EUR)**")
-        initial_fx_rate = st.number_input("Kurz CZK/EUR (nákup)", min_value=10.0, value=25.0, step=0.1)
-        fx_appreciation = st.slider("Změna kurzu (% p.a.)", -5.0, 5.0, 0.0, 0.1, 
-                                           help="+% = posílení EUR (zisk), -% = oslabení EUR")
-    else:
-        etf_return = 0
-        initial_fx_rate = 25.0
-        fx_appreciation = 0
+        time_test_enabled = st.checkbox("Zohlednit časový test", value=True, help="Osvobození od daně ze zisku při prodeji po určité době.", key="time_test_enabled")
+        if time_test_enabled:
+            time_test_years = st.number_input("Délka časového testu (roky)", min_value=0, value=10, step=1, key="time_test_years")
+        else:
+            time_test_years = 10
 
-# Sekce 6: Optimalizace
-st.sidebar.markdown("---")
-with st.sidebar.expander("✨ Optimalizace Strategie", expanded=False):
-    st.markdown("Najdi nejlepší kombinaci LTV a Doby držení pro max. IRR.")
-    opt_min_ltv = st.number_input("Min. LTV (%)", 0, 100, 20, 5)
-    opt_max_ltv = st.number_input("Max. LTV (%)", 0, 100, 90, 5)
+        st.markdown("---")
+        st.markdown("**Alternativní investice (ETF)**")
+        etf_comparison = st.checkbox("Porovnat s ETF", value=True)
+        if etf_comparison:
+            etf_return = st.number_input("Očekávaný výnos ETF (% p.a.)", min_value=0.0, value=8.0, step=0.5)
+            initial_fx_rate = st.number_input("Kurz CZK/EUR (nákup)", min_value=10.0, value=25.0, step=0.1)
+            fx_appreciation = st.slider("Změna kurzu (% p.a.)", -5.0, 5.0, 0.0, 0.1, help="+% = posílení EUR, -% = oslabení EUR")
+        else:
+            etf_return = 0
+            initial_fx_rate = 25.0
+            fx_appreciation = 0
+
+# --- B. PARAMETRY NÁKUPU (1. Sekce) ---
+with c_buy:
+    st.subheader("1. Nákup a Růst")
+    # Cena a poplatky (vstupní) - Number input (s tlačítky) pro přesné zadání
+    purchase_price_m = st.number_input("Kupní cena (mil. Kč)", min_value=0.5, value=5.0, step=0.1, format="%.2f", help="Celková pořizovací cena nemovitosti.")
+    purchase_price = purchase_price_m * 1_000_000
     
-    if st.button("🔍 Najít optimální strategii"):
+    one_off_costs = st.number_input("Vstupní poplatky (Kč)", min_value=0, value=150_000, step=10_000, help="Provize RK, právní servis, rekonstrukce před nájmem.")
+    
+    # Růst ceny - Slider (včetně záporných hodnot)
+    st.markdown("**Očekávání trhu**")
+    appreciation_rate = st.slider("Růst ceny nemovitosti (% p.a.)", -5.0, 15.0, 3.0, 0.1, help="Roční změna tržní ceny. Záporná hodnota simuluje pokles trhu.")
+    
+    # Provize při prodeji - Number input
+    sale_fee_percent = st.number_input("Náklady na budoucí prodej (% z ceny)", 0.0, 10.0, 3.0, 0.5, format="%.1f", help="Rezerva na provizi RK a právní servis při prodeji.")
+
+# --- C. NÁJEM (2. Sekce) ---
+with c_rent:
+    st.subheader("2. Nájem a Provoz")
+    # Nájem a Náklady - Number inputs
+    col_rent1, col_rent2 = st.columns(2)
+    with col_rent1:
+        monthly_rent = st.number_input("Nájemné (Kč/měs)", min_value=0, value=18000, step=500, help="Čisté nájemné bez poplatků za energie.")
+    with col_rent2:
+        monthly_expenses = st.number_input("Náklady (Kč/měs)", min_value=0, value=3500, step=100, help="Fond oprav, pojištění, správa.")
+    
+    # Neobsazenost - Slider
+    vacancy_months = st.slider("Neobsazenost (měsíce/rok)", 0.0, 6.0, 1.0, 0.1, help="Průměrná doba, kdy byt nebude generovat nájem.")
+    
+    # Inflace - Slider
+    rent_growth_rate = st.slider("Inflace nájmu a nákladů (% p.a.)", 0.0, 15.0, 2.0, 0.1, help="Očekávaný roční růst nájemného i provozních nákladů.")
+
+# --- D. HYPOTÉKA A STRATEGIE (3. Sekce) ---
+with c_strat:
+    st.subheader("3. Hypotéka a Strategie")
+    
+    # Doba a Úrok
+    col_mort1, col_mort2 = st.columns(2)
+    with col_mort1:
+        loan_term_years = st.slider("Doba splácení (roky)", 5, 40, 30, 1)
+    with col_mort2:
+        interest_rate = st.number_input("Úrok hypotéky (%)", min_value=0.0, max_value=20.0, value=5.4, step=0.1, format="%.2f")
+        
+    st.markdown("---")
+    st.write("**Optimalizátor Strategie**")
+    st.caption("Vyberte rozsah LTV (páky), který jste ochotni akceptovat, a nechte model najít nejvýnosnější kombinaci.")
+    
+    # Range slider pro optimalizaci
+    opt_ltv_range = st.slider("Rozsah akceptovatelného LTV (%)", 0, 100, (20, 90))
+    
+    if st.button("✨ Vypočítat a nastavit optimální strategii", type="primary"):
         best_irr = -999.0
         best_ltv = 0
         best_years = 0
         
         progress_bar = st.progress(0)
-        ltv_range = range(int(opt_min_ltv), int(opt_max_ltv) + 1, 5)
+        # Rozsah z oboustranného slideru
+        min_ltv_opt, max_ltv_opt = opt_ltv_range
+        ltv_range = range(min_ltv_opt, max_ltv_opt + 1, 5)
         total_steps = len(ltv_range)
         
         for i, try_ltv in enumerate(ltv_range):
@@ -118,9 +136,8 @@ with st.sidebar.expander("✨ Optimalizace Strategie", expanded=False):
             
             for try_year in range(1, 31):
                 try_down_payment = purchase_price * (1 - try_ltv / 100)
-                
-                # Předpoklad: Standardní daň 15% (není v UI)
                 time_test_config = {"enabled": time_test_enabled, "years": time_test_years}
+                
                 res = calculations.calculate_metrics(
                     purchase_price=purchase_price,
                     down_payment=try_down_payment,
@@ -153,17 +170,28 @@ with st.sidebar.expander("✨ Optimalizace Strategie", expanded=False):
             'years': best_years,
             'irr': best_irr
         }
-    
+        
+    # Zobrazení výsledku hledání
     if 'opt_result' in st.session_state:
         res = st.session_state['opt_result']
-        st.success(f"**Nalezeno:**\n\nLTV: {res['ltv']} %\n\nDoba: {res['years']} let\n\nIRR: {res['irr']:.2f} %")
+        st.info(f"💡 Nalezené optimum: LTV **{res['ltv']}%** na **{res['years']} let** (IRR {res['irr']:.2f}%)")
         
-        def apply_strategy(ltv, years):
-            st.session_state['input_type_mode'] = "LTV (%)"
-            st.session_state['target_ltv_input'] = ltv
-            st.session_state['holding_period_input'] = years
-            
-        st.button("🚀 Použít tuto strategii", on_click=apply_strategy, args=(res['ltv'], res['years']))
+        if st.button("⬇️ Aplikovat optimum"):
+             st.session_state['target_ltv_input'] = res['ltv']
+             st.session_state['holding_period_input'] = res['years']
+             st.rerun()
+
+    st.markdown("---")
+    # Finální vstupy strategie (uživatel je může doladit po optimalizaci)
+    holding_period = st.slider("Doba držení (roky)", 1, 30, step=1, key="holding_period_input")
+    
+    target_ltv = st.slider("LTV (%)", 0, 100, step=5, key="target_ltv_input")
+    
+    # Přepočet kapitálu podle LTV
+    down_payment = purchase_price * (1 - target_ltv / 100)
+    mortgage_amount = purchase_price - down_payment
+    
+    st.caption(f"Vlastní kapitál: {down_payment/1_000_000:.2f} mil. Kč | Úvěr: {mortgage_amount/1_000_000:.2f} mil. Kč")
 
 
 # --- Výpočty ---
