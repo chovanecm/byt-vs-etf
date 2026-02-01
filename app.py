@@ -52,11 +52,24 @@ with c_adv:
         st.markdown("**Daně**")
         tax_rate = st.number_input("Daň z příjmu (%)", min_value=0.0, max_value=100.0, value=15.0, step=1.0, key="tax_rate")
         
-        time_test_enabled = st.checkbox("Zohlednit časový test", value=True, help="Osvobození od daně ze zisku při prodeji po určité době.", key="time_test_enabled")
-        if time_test_enabled:
+        st.caption("Režim zdanění při prodeji:")
+        tax_mode = st.radio(
+            "Režim daně z prodeje", # Hidden label via label_visibility if needed, but caption is usually enough
+            ["FO (Časový test)", "Vždy danit", "Nikdy nedanit"],
+            index=0,
+            label_visibility="collapsed",
+            help="FO (Časový test) = osvobození po X letech.\nVždy danit = např. firma.\nNikdy nedanit = hrubý zisk."
+        )
+        
+        if tax_mode == "FO (Časový test)":
+            time_test_enabled = True
             time_test_years = st.number_input("Délka časového testu (roky)", min_value=0, value=10, step=1, key="time_test_years")
-        else:
-            time_test_years = 10
+        elif tax_mode == "Vždy danit":
+            time_test_enabled = True
+            time_test_years = 1000 # Effectively infinite
+        else: # Nikdy nedanit
+            time_test_enabled = False
+            time_test_years = 0
 
         st.markdown("---")
         st.markdown("**Alternativní investice (ETF)**")
