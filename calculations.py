@@ -1,5 +1,6 @@
 import numpy_financial as npf
 import numpy as np
+import pandas as pd
 
 def calculate_metrics(
     purchase_price, down_payment, one_off_costs,
@@ -69,6 +70,7 @@ def calculate_metrics(
     # Lists
     property_values = []
     mortgage_balances = []
+    operating_cashflows = []
     
     for year in range(1, int(holding_period) + 1):
         year_idx = year - 1
@@ -102,6 +104,7 @@ def calculate_metrics(
         
         # Net Cashflow
         curr_annual_cf = curr_annual_gross_rent - annual_mortgage_payment - curr_annual_expenses - tax_paid
+        operating_cashflows.append(curr_annual_cf)
         
         yearly_cashflows_arr.append(curr_annual_cf)
         total_cf_sum += curr_annual_cf
@@ -189,10 +192,12 @@ def calculate_metrics(
         "tax_paid_y1": tax_y1,
         "capital_gains_tax": capital_gains_tax,
         "initial_investment": initial_investment,
+        "initial_mortgage": mortgage_amount,
         "series": {
             "property_values": property_values,
             "mortgage_balances": mortgage_balances,
-            "cashflows": yearly_cashflows_arr, 
+            "operating_cashflows": operating_cashflows,
+            "cashflows": yearly_cashflows_arr,
             "etf_values": etf_values_czk,
             "etf_cashflows": etf_cashflows_arr
         }
@@ -257,3 +262,243 @@ def run_monte_carlo(
         results.append(res)
         
     return results
+
+def calculate_marginal_roe(
+    metrics,
+    purchase_price,
+    one_off_costs,
+    sale_fee_percent,
+    tax_rate,
+    time_test_vars,
+    etf_return_rate,
+    interest_rate_current, # Rate of existing mortgage
+    market_refinance_rate,  # New rate if we refinance
+    target_ltv_refinance    # Desired LTV for refinance
+):
+    """
+    Vypočítá meziroční metriky (Marginal ROE) a simulace.
+    Vrací DataFrame s ročními daty.
+    """
+    import pandas as pd
+    
+    series = metrics['series']
+    prop_values = series['property_values']
+    mtg_balances = series['mortgage_balances']
+    op_cashflows = series['operating_cashflows']
+    initial_mortgage = metrics['initial_mortgage']
+    
+    years = []
+    annual_roes = []
+    equity_starts = []
+    net_equities = [] # Čistá hodnota při prodeji (po zdanění a poplatcích)
+    ref_cashouts = []
+    ref_benefits = [] # Čistý roční přínos refinancování v CZK
+
+    num_years = len(prop_values)
+    
+    for i in range(num_years):
+        year = i + 1
+        years.append(year)
+        
+        # 1. Start & End values
+        if year == 1:
+            val_start = purchase_price
+            mtg_start = initial_mortgage
+        else:
+            val_start = prop_values[i-1]
+            mtg_start = mtg_balances[i-1]
+            
+        val_end = prop_values[i]
+        mtg_end = mtg_balances[i]
+        
+        # 2. Components of Return for ROE
+        appreciation = val_end - val_start
+        principal_paydown = mtg_start - mtg_end
+        cashflow = op_cashflows[i]
+        
+        total_gain = appreciation + principal_paydown + cashflow
+        
+        # 3. Equity Basis (Start of Year)
+        equity_start = val_start - mtg_start
+        equity_starts.append(equity_start)
+        
+        # 4. ROE Calculation
+        if equity_start > 1000: # Defensive
+            roe = (total_gain / equity_start) * 100
+        else:
+            roe = 0 
+        annual_roes.append(roe)
+        
+        # 5. Net Equity (Liquidation Value at End of Year)
+        sale_costs = val_end * (sale_fee_percent / 100.0)
+        
+        # Capital Gains Tax Logic
+        capital_gains_tax = 0
+        if time_test_vars and time_test_vars.get("enabled", True):
+            limit_years = time_test_vars.get("years", 10)
+            if year < limit_years:
+                total_acq_cost = purchase_price + one_off_costs
+                profit = val_end - sale_costs - total_acq_cost
+                if profit > 0:
+                    capital_gains_tax = profit * (tax_rate / 100.0)
+        
+        net_equity = val_end - mtg_end - sale_costs - capital_gains_tax
+        net_equities.append(net_equity)
+        
+        # 6. Refinance Potential (User Defined LTV)
+        # New Loan Amount
+        max_loan_amount = val_end * (target_ltv_refinance / 100.0)
+        potential_cash_out = max_loan_amount - mtg_end
+        cash_out = max(0, potential_cash_out)
+        ref_cashouts.append(cash_out)
+        
+        # 7. Refinance Arbitrage (Complex Cost Analysis)
+        # Situation A (Keep): Pay Interest on Old Debt only
+        cost_keep = mtg_end * (interest_rate_current / 100.0)
+        
+        # Situation B (Refinance): Pay Interest on New Total Debt (Old + CashOut) at NEW Rate
+        # Assumption: Banks usually reprice the whole debt effectively
+        cost_refinance = max_loan_amount * (market_refinance_rate / 100.0)
+        
+        # Income from CashOut invested in ETF
+        income_etf = cash_out * (etf_return_rate / 100.0)
+        
+        # Net Benefit = (Income_ETF) - (Difference in Interest Costs)
+        # Benefit = Income_ETF - (Cost_Refinance - Cost_Keep)
+        increased_interest_cost = cost_refinance - cost_keep
+        benefit = income_etf - increased_interest_cost
+        
+        ref_benefits.append(benefit)
+
+    df = pd.DataFrame({
+        'Year': years,
+        'Marginal_ROE': annual_roes,
+        'Equity_Start': equity_starts,
+        'Net_Liquidation_Value': net_equities,
+        'Refinance_CashOut': ref_cashouts,
+        'Refinance_Arbitrage_CZK': ref_benefits,
+        'ETF_Benchmark': [etf_return_rate] * num_years
+    })
+    
+    # Opportunity Cost Sim: "Dead Equity Gap"
+    df['Gap'] = df['ETF_Benchmark'] - df['Marginal_ROE']
+    
+    return df
+
+def calculate_decision_metrics_for_price(
+    property_value,
+    mortgage_balance,
+    purchase_price,
+    one_off_costs,
+    sale_fee_percent,
+    tax_rate,
+    time_test_vars,
+    holding_years,
+    target_ltv_ref,
+    market_ref_rate,
+    interest_rate_current,
+    etf_return_rate
+):
+    """
+    Vypočítá rozhodovací metriky (Net Equity, Refinance Benefit) pro konkrétní zadanou cenu.
+    Používá se pro manuální override ceny v UI.
+    """
+    # 1. Net Equity (Self calculation)
+    sale_costs = property_value * (sale_fee_percent / 100.0)
+    
+    capital_gains_tax = 0
+    if time_test_vars and time_test_vars.get("enabled", True):
+        limit_years = time_test_vars.get("years", 10)
+        if holding_years < limit_years:
+            total_acq_cost = purchase_price + one_off_costs
+            profit = property_value - sale_costs - total_acq_cost
+            if profit > 0:
+                capital_gains_tax = profit * (tax_rate / 100.0)
+            
+    net_equity = property_value - mortgage_balance - sale_costs - capital_gains_tax
+    
+    # 2. Refinance Analysis
+    max_loan_amount = property_value * (target_ltv_ref / 100.0)
+    potential_cash_out = max_loan_amount - mortgage_balance
+    cash_out = max(0, potential_cash_out)
+    
+    # Arbitrage
+    cost_keep = mortgage_balance * (interest_rate_current / 100.0)
+    cost_refinance = max_loan_amount * (market_ref_rate / 100.0)
+    income_etf = cash_out * (etf_return_rate / 100.0)
+    
+    benefit = income_etf - (cost_refinance - cost_keep)
+    
+    return {
+        "Net_Liquidation_Value": net_equity,
+        "Refinance_CashOut": cash_out,
+        "Refinance_Arbitrage_CZK": benefit
+    }
+
+def project_future_wealth(
+    start_property_value,
+    start_mortgage_balance,
+    net_liquidation_value,
+    monthly_payment,
+    mortgage_rate,
+    appreciation_rate,
+    etf_return_rate,
+    projection_years=10
+):
+    """
+    Porovná vývoj majetku (Net Worth) pro dvě strategie:
+    A) HOLD: Držet nemovitost dalších X let
+    B) SELL: Prodat, zaplatit daně/poplatky (Net_Liquidation_Value) a investovat do ETF
+    """
+    import pandas as pd
+    import numpy_financial as npf
+
+    years = []
+    nw_hold = []
+    nw_sell = []
+    
+    # Setup - Scenario A (HOLD)
+    curr_val = start_property_value
+    curr_mtg = start_mortgage_balance
+    monthly_rate = (mortgage_rate / 100) / 12
+    
+    # Setup - Scenario B (SELL)
+    # Start with cash generated from sale
+    curr_etf_balance = net_liquidation_value
+    
+    for y in range(1, projection_years + 1):
+        years.append(y)
+        
+        # --- A: HOLD strategy ---
+        # 1. Růst ceny
+        curr_val *= (1 + appreciation_rate / 100)
+        
+        # 2. Splácení hypotéky (12 měsíců)
+        if curr_mtg > 0:
+            # FV konvence: rate, nper, pmt, pv
+            # pv = -dluh (negativní cashflow na začátku z pohledu dluhu? ne, dluh je závazek)
+            # Konvence npf.fv: 
+            # Pokud úrok > 0: dluh roste. Splátka dluh snižuje.
+            # FV(rate, n, pmt, -principal)
+            # Pokud principal=1M, pmt=0 -> FV = 1M * (1+r)^n (dluh roste)
+            # Pokud pmt > 0 -> snižuje dluh.
+            # Zůstatek hypotéky by měl být kladné číslo (velikost dluhu).
+            # Použijeme logiku: Zůstatek = FV(rate, 12, pmt, -curr_mtg)
+            # Výsledek bude záporný (z pohledu banky závazek), převedeme na abs.
+            res = npf.fv(monthly_rate, 12, monthly_payment, -curr_mtg)
+            curr_mtg = -res
+            if curr_mtg < 0: curr_mtg = 0
+            
+        equity_hold = curr_val - curr_mtg
+        nw_hold.append(equity_hold)
+        
+        # --- B: SELL strategy ---
+        # Jednoduché úročení ETF
+        curr_etf_balance *= (1 + etf_return_rate / 100)
+        nw_sell.append(curr_etf_balance)
+        
+    return pd.DataFrame({
+        "Year_Relative": years,
+        "NW_Hold": nw_hold,
+        "NW_Sell": nw_sell
+    })

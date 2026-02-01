@@ -1,10 +1,14 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
 import numpy_financial as npf
-import plotly.express as px
-import plotly.graph_objects as go
-import calculations  # Import externích výpočtů
+import calculations
+
+# Import components and views
+from components.sidebar import render_sidebar
+from views.analysis import render_analysis_tab
+from views.strategy import render_strategy_tab
+from views.cashflow import render_cashflow_tab
+from views.comparison import render_comparison_tab
+from views.monte_carlo import render_monte_carlo_tab
 
 # Nastavení stránky
 st.set_page_config(page_title="Investiční kalkulačka", layout="wide", initial_sidebar_state="expanded")
@@ -22,7 +26,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Inicializace session state
+# Inicializace session state variables used in sidebar
 if "target_ltv_input" not in st.session_state:
     st.session_state["target_ltv_input"] = 80
 if "holding_period_input" not in st.session_state:
@@ -33,187 +37,32 @@ if "input_type_mode" not in st.session_state:
 st.title("🏢 Analýza Investičního Bytu")
 st.markdown("Interaktivní nástroj pro modelování výnosnosti investice do nemovitosti.")
 
-# --- Sidebar Vstupy ---
-st.sidebar.header("⚙️ Vstupy")
+# --- Render Sidebar ---
+inputs = render_sidebar()
 
-# Definice vizuálního layoutu (kontejnery)
-# 1. Sekce: Nákup
-c_buy = st.sidebar.container()
-# 2. Sekce: Nájem
-c_rent = st.sidebar.container()
-# 3. Sekce: Hypotéka a Strategie
-c_strat = st.sidebar.container()
-# 4. Sekce: Pokročilé (Daně, ETF)
-c_adv = st.sidebar.container()
-
-# --- A. POKROČILÉ NASTAVENÍ (Spouštíme nejdřív kvůli závislostem) ---
-with c_adv:
-    with st.expander("⚙️ Pokročilé (Daně, ETF)", expanded=False):
-        st.markdown("**Daně**")
-        tax_rate = st.number_input("Daň z příjmu (%)", min_value=0.0, max_value=100.0, value=15.0, step=1.0, key="tax_rate")
-        
-        st.caption("Režim zdanění při prodeji:")
-        tax_mode = st.radio(
-            "Režim daně z prodeje", # Hidden label via label_visibility if needed, but caption is usually enough
-            ["FO (Časový test)", "Vždy danit", "Nikdy nedanit"],
-            index=0,
-            label_visibility="collapsed",
-            help="FO (Časový test) = osvobození po X letech.\nVždy danit = např. firma.\nNikdy nedanit = hrubý zisk."
-        )
-        
-        if tax_mode == "FO (Časový test)":
-            time_test_enabled = True
-            time_test_years = st.number_input("Délka časového testu (roky)", min_value=0, value=10, step=1, key="time_test_years")
-        elif tax_mode == "Vždy danit":
-            time_test_enabled = True
-            time_test_years = 1000 # Effectively infinite
-        else: # Nikdy nedanit
-            time_test_enabled = False
-            time_test_years = 0
-
-        st.markdown("---")
-        st.markdown("**Alternativní investice (ETF)**")
-        etf_comparison = st.checkbox("Porovnat s ETF", value=True)
-        if etf_comparison:
-            etf_return = st.number_input("Očekávaný výnos ETF (% p.a.)", min_value=0.0, value=8.0, step=0.5)
-            initial_fx_rate = st.number_input("Kurz CZK/EUR (nákup)", min_value=10.0, value=25.0, step=0.1)
-            fx_appreciation = st.slider("Změna kurzu (% p.a.)", -5.0, 5.0, 0.0, 0.1, help="+% = posílení EUR, -% = oslabení EUR")
-        else:
-            etf_return = 0
-            initial_fx_rate = 25.0
-            fx_appreciation = 0
-
-# --- B. PARAMETRY NÁKUPU (1. Sekce) ---
-with c_buy:
-    st.subheader("1. Nákup a Růst")
-    # Cena a poplatky (vstupní) - Number input (s tlačítky) pro přesné zadání
-    purchase_price_m = st.number_input("Kupní cena (mil. Kč)", min_value=0.5, value=5.0, step=0.1, format="%.2f", help="Celková pořizovací cena nemovitosti.")
-    purchase_price = purchase_price_m * 1_000_000
-    
-    one_off_costs = st.number_input("Vstupní poplatky (Kč)", min_value=0, value=150_000, step=10_000, help="Provize RK, právní servis, rekonstrukce před nájmem.")
-    
-    # Růst ceny - Slider (včetně záporných hodnot)
-    st.markdown("**Očekávání trhu**")
-    appreciation_rate = st.slider("Růst ceny nemovitosti (% p.a.)", -5.0, 15.0, 3.0, 0.1, help="Roční změna tržní ceny. Záporná hodnota simuluje pokles trhu.")
-    
-    # Provize při prodeji - Number input
-    sale_fee_percent = st.number_input("Náklady na budoucí prodej (% z ceny)", 0.0, 10.0, 3.0, 0.5, format="%.1f", help="Rezerva na provizi RK a právní servis při prodeji.")
-
-# --- C. NÁJEM (2. Sekce) ---
-with c_rent:
-    st.subheader("2. Nájem a Provoz")
-    # Nájem a Náklady - Number inputs
-    col_rent1, col_rent2 = st.columns(2)
-    with col_rent1:
-        monthly_rent = st.number_input("Nájemné (Kč/měs)", min_value=0, value=18000, step=500, help="Čisté nájemné bez poplatků za energie.")
-    with col_rent2:
-        monthly_expenses = st.number_input("Náklady (Kč/měs)", min_value=0, value=3500, step=100, help="Fond oprav, pojištění, správa.")
-    
-    # Neobsazenost - Slider
-    vacancy_months = st.slider("Neobsazenost (měsíce/rok)", 0.0, 6.0, 1.0, 0.1, help="Průměrná doba, kdy byt nebude generovat nájem.")
-    
-    # Inflace - Slider
-    rent_growth_rate = st.slider("Inflace nájmu a nákladů (% p.a.)", 0.0, 15.0, 2.0, 0.1, help="Očekávaný roční růst nájemného i provozních nákladů.")
-
-# --- D. HYPOTÉKA A STRATEGIE (3. Sekce) ---
-with c_strat:
-    st.subheader("3. Hypotéka a Strategie")
-    
-    # Doba a Úrok
-    col_mort1, col_mort2 = st.columns(2)
-    with col_mort1:
-        loan_term_years = st.slider("Doba splácení (roky)", 5, 40, 30, 1)
-    with col_mort2:
-        interest_rate = st.number_input("Úrok hypotéky (%)", min_value=0.0, max_value=20.0, value=5.4, step=0.1, format="%.2f")
-        
-    st.markdown("---")
-    st.write("**Optimalizátor Strategie**")
-    st.caption("Vyberte rozsah LTV (páky), který jste ochotni akceptovat, a nechte model najít nejvýnosnější kombinaci.")
-    
-    # Range slider pro optimalizaci
-    opt_ltv_range = st.slider("Rozsah akceptovatelného LTV (%)", 0, 100, (20, 90))
-    
-    if st.button("✨ Vypočítat a nastavit optimální strategii", type="primary"):
-        best_irr = -999.0
-        best_ltv = 0
-        best_years = 0
-        
-        progress_bar = st.progress(0)
-        # Rozsah z oboustranného slideru
-        min_ltv_opt, max_ltv_opt = opt_ltv_range
-        ltv_range = range(min_ltv_opt, max_ltv_opt + 1, 5)
-        total_steps = len(ltv_range)
-        
-        for i, try_ltv in enumerate(ltv_range):
-            progress_bar.progress((i + 1) / total_steps)
-            
-            for try_year in range(1, 31):
-                try_down_payment = purchase_price * (1 - try_ltv / 100)
-                time_test_config = {"enabled": time_test_enabled, "years": time_test_years}
-                
-                res = calculations.calculate_metrics(
-                    purchase_price=purchase_price,
-                    down_payment=try_down_payment,
-                    one_off_costs=one_off_costs,
-                    interest_rate=interest_rate,
-                    loan_term_years=loan_term_years,
-                    monthly_rent=monthly_rent,
-                    monthly_expenses=monthly_expenses,
-                    vacancy_months=vacancy_months,
-                    tax_rate=tax_rate, 
-                    appreciation_rate=appreciation_rate,
-                    rent_growth_rate=rent_growth_rate,
-                    holding_period=try_year,
-                    etf_comparison=False,
-                    etf_return=0,
-                    initial_fx_rate=25,
-                    fx_appreciation=0,
-                    time_test_vars=time_test_config,
-                    sale_fee_percent=sale_fee_percent
-                )
-                
-                if res['irr'] > best_irr:
-                    best_irr = res['irr']
-                    best_ltv = try_ltv
-                    best_years = try_year
-        
-        progress_bar.empty()
-        st.session_state['opt_result'] = {
-            'ltv': best_ltv,
-            'years': best_years,
-            'irr': best_irr
-        }
-        
-    # Zobrazení výsledku hledání
-    if 'opt_result' in st.session_state:
-        res = st.session_state['opt_result']
-        st.info(f"💡 Nalezené optimum: LTV **{res['ltv']}%** na **{res['years']} let** (IRR {res['irr']:.2f}%)")
-        
-        if st.button("⬇️ Aplikovat optimum"):
-             st.session_state['target_ltv_input'] = res['ltv']
-             st.session_state['holding_period_input'] = res['years']
-             st.rerun()
-
-    st.markdown("---")
-    # Finální vstupy strategie (uživatel je může doladit po optimalizaci)
-    holding_period = st.slider("Doba držení (roky)", 1, 30, step=1, key="holding_period_input")
-    
-    target_ltv = st.slider("LTV (%)", 0, 100, step=5, key="target_ltv_input")
-    
-    # Přepočet kapitálu podle LTV
-    down_payment = purchase_price * (1 - target_ltv / 100)
-    mortgage_amount = purchase_price - down_payment
-    
-    st.caption(f"Vlastní kapitál: {down_payment/1_000_000:.2f} mil. Kč | Úvěr: {mortgage_amount/1_000_000:.2f} mil. Kč")
-
+# Unpack inputs needed for top-level calculations
+purchase_price = inputs['purchase_price']
+down_payment = inputs['down_payment']
+mortgage_amount = inputs['mortgage_amount']
+one_off_costs = inputs['one_off_costs']
+interest_rate = inputs['interest_rate']
+loan_term_years = inputs['loan_term_years']
+monthly_rent = inputs['monthly_rent']
+monthly_expenses = inputs['monthly_expenses']
+vacancy_months = inputs['vacancy_months']
+tax_rate = inputs['tax_rate']
+appreciation_rate = inputs['appreciation_rate']
+rent_growth_rate = inputs['rent_growth_rate']
+holding_period = inputs['holding_period']
+etf_comparison = inputs['etf_comparison']
+etf_return = inputs['etf_return']
+initial_fx_rate = inputs['initial_fx_rate']
+fx_appreciation = inputs['fx_appreciation']
+time_test_config = inputs['time_test_config']
+sale_fee_percent = inputs['sale_fee_percent']
 
 # --- Výpočty ---
-# (Všechna logika je nyní v modulu calculations.py pro zachování Orthogonality)
-
 try:
-    # Konfigurace pro časový test
-    time_test_config = {"enabled": time_test_enabled, "years": time_test_years}
-
     # Volání centrální výpočetní funkce
     metrics = calculations.calculate_metrics(
         purchase_price=purchase_price,
@@ -239,9 +88,7 @@ try:
     # Rozbalení výsledků pro UI
     irr = metrics['irr']
     total_profit = metrics['total_profit']
-    etf_irr = metrics['etf_irr']
     monthly_cashflow = metrics['monthly_cashflow_y1']
-    tax_paid_y1 = metrics['tax_paid_y1']
     capital_gains_tax = metrics['capital_gains_tax']
     initial_investment = metrics['initial_investment']
     
@@ -253,8 +100,9 @@ try:
     etf_values_czk = series['etf_values']
     etf_cashflows_arr = series['etf_cashflows']
 
-    # --- Dopočítáváme pouze věci specifické pro UI zobrazení ---
-    
+    # --- Dopočítáváme pouze věci specifické pro UI zobrazení (Derived Metrics) ---
+    derived_metrics = {}
+
     # 1. Splátka hypotéky (pouze pro zobrazení v metrikách nahoře)
     if mortgage_amount > 0:
         monthly_rate_display = (interest_rate / 100) / 12
@@ -262,33 +110,35 @@ try:
         monthly_mortgage_payment = npf.pmt(monthly_rate_display, num_payments_display, -mortgage_amount)
     else:
         monthly_mortgage_payment = 0
+    derived_metrics['monthly_mortgage_payment'] = monthly_mortgage_payment
 
     # 2. Metriky Year 1
-    annual_gross_rent = monthly_rent * (12 - vacancy_months)
-    annual_expenses_total = monthly_expenses * 12
-    # Cash-on-Cash
     annual_cashflow_year1 = monthly_cashflow * 12
     cash_on_cash = (annual_cashflow_year1 / initial_investment) * 100 if initial_investment > 0 else 0
-    # LTV
     ltv = (mortgage_amount / purchase_price) * 100 if purchase_price > 0 else 0
+    derived_metrics['cash_on_cash'] = cash_on_cash
+    derived_metrics['ltv'] = ltv
 
     # 3. Odvozené časové řady pro grafy
     # Equity = Hodnota - Dluh
     equity_values = [val - dept for val, dept in zip(property_values, mortgage_balances)]
+    derived_metrics['equity_values'] = equity_values
 
     # 4. Finální hodnoty pro reporty
     sale_price = property_values[-1]
     final_mortgage_balance = mortgage_balances[-1]
     
     # Cistý výnos z prodeje (Net Sale Proceeds)
-    # Známe: total_profit = total_cf_sum + sale_proceeds_net - initial_investment
-    # Tedy: total_cf_sum = total_profit - sale_proceeds_net + initial_investment
-    # Pozn: V calculations se sale_proceeds počítá čisté. Vraťme se k logice calculations.
-    # sale_proceeds v metrikách už JE net. Ale calculations je neobsahuje samostatně ve výstupu (jen v cashflows a total_profit).
-    # Rekonstrukce dle calculations logiky:
     final_sale_fee = sale_price * (sale_fee_percent / 100.0)
     sale_proceeds_net = sale_price - final_mortgage_balance - final_sale_fee - capital_gains_tax
     total_cf_sum = total_profit - sale_proceeds_net + initial_investment
+    
+    derived_metrics['sale_proceeds_net'] = sale_proceeds_net
+    derived_metrics['total_cf_sum'] = total_cf_sum
+    
+    # ROI
+    roi = (total_profit / initial_investment) * 100 if initial_investment > 0 else 0
+    derived_metrics['roi'] = roi
 
     # ETF Metriky pro tabulky
     final_etf_value_czk = 0
@@ -297,30 +147,26 @@ try:
     
     if etf_comparison and len(etf_values_czk) > 0:
         final_etf_value_czk = etf_values_czk[-1]
-        
-        # Celkem investováno do ETF = Initial + Suma(-Contributions)
-        # Contributions jsou v etf_cashflows_arr[1:-1] a castecne v [-1]
-        # Jednodušší: Profit = Final Value - Total Invested
-        # Známe IRR a toky, ale Total Invested není přímo v metrics.
-        # Můžeme sečíst záporné toky v etf_cashflows_arr (kromě té "fiktivní" finální, kterou tam možná calculations dává, ale calculations vrací raw pole?)
-        # Calculations: etf_cashflows_arr[-1] += final_etf_value_czk.
-        # Takže odečteme final value od sumy toků, abychom dostali jen investice (které jsou záporné).
         sum_of_flows = sum(etf_cashflows_arr)
-        # sum_of_flows = (-Invested) + FinalValue
-        # Invested = FinalValue - sum_of_flows
         etf_total_invested_czk = final_etf_value_czk - sum_of_flows
-        
         etf_profit = final_etf_value_czk - etf_total_invested_czk
         etf_roi = (etf_profit / etf_total_invested_czk) * 100 if etf_total_invested_czk > 0 else 0
+    else:
+        etf_profit = 0
+        etf_roi = 0
+
+    derived_metrics['final_etf_value_czk'] = final_etf_value_czk
+    derived_metrics['etf_total_invested_czk'] = etf_total_invested_czk
+    derived_metrics['etf_profit'] = etf_profit
+    derived_metrics['etf_roi'] = etf_roi
 
     if capital_gains_tax > 0:
-        st.info(f"ℹ️ Uplatněna daň ze zisku ({tax_rate} %) ve výši **{capital_gains_tax/1_000_000:.2f} mil. Kč** (nesplněn časový test {time_test_years} let).")
+        t_years = time_test_config['years']
+        st.info(f"ℹ️ Uplatněna daň ze zisku ({tax_rate} %) ve výši **{capital_gains_tax/1_000_000:.2f} mil. Kč** (nesplněn časový test {t_years} let).")
 
 except Exception as e:
     st.error(f"Chyba ve výpočtu: {e}")
     st.stop()
-    etf_profit = final_etf_value_czk - etf_total_invested_czk
-    etf_roi = (etf_profit / etf_total_invested_czk) * 100 if etf_total_invested_czk > 0 else 0
 
 
 # --- Zobrazení ---
@@ -351,290 +197,21 @@ with col5:
 
 st.divider()
 
-st.divider()
-
 # Záložky pro různé pohledy
-tab1, tab2, tab3, tab4 = st.tabs(["📈 Analýza a Grafy", "📊 Data a Cashflow", "⚖️ Porovnání s ETF", "🎲 Monte Carlo"])
+tab1, tab_strat, tab2, tab3, tab4 = st.tabs(["📈 Analýza a Grafy", "🔮 Strategie a Rozhodování", "📊 Data a Cashflow", "⚖️ Porovnání s ETF", "🎲 Monte Carlo"])
 
 with tab1:
-    # Grafy
-    st.subheader("Vývoj hodnoty a dluhu v čase")
+    render_analysis_tab(inputs, metrics, derived_metrics)
 
-    # Příprava DF pro graf
-    df_chart = pd.DataFrame({
-        "Rok": list(range(1, holding_period + 1)),
-        "Hodnota nemovitosti": property_values,
-        "Zůstatek hypotéky": mortgage_balances,
-        "Čisté jmění (Equity)": equity_values
-    })
-
-    # Plotly Graf - 2 osy nebo skládaný
-    fig = go.Figure()
-
-    # 1. Hodnota nemovitosti (Kontext, tenká čára)
-    fig.add_trace(go.Scatter(
-        x=df_chart["Rok"], 
-        y=df_chart["Hodnota nemovitosti"],
-        mode='lines',
-        name='Tržní cena nemovitosti',
-        line=dict(color='#A5D6A7', width=2, dash='dot'), # Světlejší zelená, méně dominantní
-        legendgroup="property"
-    ))
-
-    # 2. Vlastní kapitál v nemovitosti (Equity) - HLAVNÍ METRIKA
-    fig.add_trace(go.Scatter(
-        x=df_chart["Rok"], 
-        y=df_chart["Čisté jmění (Equity)"],
-        mode='lines',
-        name='Net Worth Nemovitost (Equity)',
-        line=dict(color='#2E7D32', width=4), # Silná tmavě zelená
-        legendgroup="property"
-    ))
-
-    # 3. Zůstatek hypotéky (Kontext)
-    fig.add_trace(go.Scatter(
-        x=df_chart["Rok"], 
-        y=df_chart["Zůstatek hypotéky"],
-        mode='lines',
-        name='Zůstatek hypotéky',
-        line=dict(color='#EF9A9A', width=1), # Světle červená
-        fill='tozeroy', # Vyplní oblast pod křivkou
-        fillcolor='rgba(239, 154, 154, 0.2)',
-        legendgroup="debt"
-    ))
-
-    # Přidání ETF do grafu
-    if etf_comparison:
-        fig.add_trace(go.Scatter(
-            x=df_chart["Rok"], 
-            y=etf_values_czk,
-            mode='lines',
-            name='Net Worth ETF (Investovaný vlastní kap.)',
-            line=dict(color='#2196F3', width=4) # Silná modrá pro přímé porovnání s Equity
-        ))
-
-    fig.update_layout(
-        title=f"Porovnání čistého majetku (Net Worth): Nemovitost vs. ETF",
-        xaxis_title="Rok",
-        yaxis_title="Hodnota (Kč)",
-        legend_title="Legenda",
-        hovermode="x unified",
-        height=500
-    )
-
-    st.plotly_chart(fig, width="stretch")
-
-    # Celkový profit report
-    st.subheader(f"💰 Finanční výsledek po {holding_period} letech")
-    res_col1, res_col2 = st.columns(2)
-
-    final_value = property_values[-1]
-    final_debt = mortgage_balances[-1]
-
-    with res_col1:
-        st.markdown(f"""
-        **Složení majetku na konci:**
-        - Odhadovaná tržní cena: **{int(final_value):,} Kč**
-        - Zbývající dluh: **{int(final_debt):,} Kč**
-        - Čistá hodnota při prodeji: **{int(sale_proceeds_net):,} Kč**
-        """)
-
-    with res_col2:
-        roi = (total_profit / initial_investment) * 100 if initial_investment > 0 else 0
-        st.markdown(f"""
-        **Ziskovost:**
-        - Kumulované cashflow (příjmy z nájmu): **{int(total_cf_sum):,} Kč**
-        - **Celkový čistý zisk:** **{int(total_profit):,} Kč**
-        - ROI (Celková návratnost): **{roi:.1f} %**
-        """)
-        st.caption(f"Kolikrát se vaše investice ({int(initial_investment):,} Kč) znásobila? To vyjadřuje ROI.")
-
+with tab_strat:
+    render_strategy_tab(inputs, metrics, derived_metrics)
+    
 with tab2:
-    st.subheader("Detailní roční cashflow")
-    
-    # Vytvoření detailní tabulky
-    data_dict = {
-        "Rok": range(1, holding_period + 1),
-        "Nemovitost Hodnota": [int(x) for x in property_values],
-        "Dluh": [int(x) for x in mortgage_balances],
-        "Equity": [int(x) for x in equity_values],
-        "Roční CF Nemovitost": [int(x) for x in yearly_cashflows_arr[1:holding_period+1]] # Bez finálního prodeje pro přehlednost? Ne, yearly_cashflows_arr[-1] má v sobě prodej.
-    }
-    
-    # Oprava zobrazení CF v posledním roce (chceme vidět provozní CF, ne s prodejem v tabulce cashflow?)
-    # Pro tabulku je lepší vidět provozní data. year_cashflow_arr je pro IRR.
-    # Musíme rekonstruovat provozní CF pro poslední rok.
-    # Ale uživatel chce vidět data.
-    
-    df_detail = pd.DataFrame(data_dict)
-    
-    if etf_comparison:
-        df_detail["ETF Hodnota (CZK)"] = [int(x) for x in etf_values_czk]
-        # Přidat sloupec s investicí do ETF (Reinvestice)
-        # Rekonstrukce z etf_cashflows_arr: [1:] jsou roční vklady (záporné).
-        # Pozor: poslední prvek etf_cashflows_arr má přičtenou finální hodnotu.
-        
-        etf_investments = [-int(x) for x in etf_cashflows_arr[1:-1]] # Vše mezi 0 a -1
-        # Poslední rok
-        last_flow = etf_cashflows_arr[-1] - final_etf_value_czk # Odečteme finální hodnotu abychom dostali jen vklad
-        etf_investments.append(-int(last_flow))
-        
-        df_detail["ETF Vklad (DCA)"] = etf_investments
-
-    st.dataframe(df_detail, use_container_width=True)
-    
-    # Download button
-    csv = df_detail.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        "📥 Stáhnout data (CSV)",
-        csv,
-        "investice_data.csv",
-        "text/csv",
-        key='download-csv'
-    )
+    render_cashflow_tab(inputs, metrics, derived_metrics)
 
 with tab3:
-    # Detailní porovnání v tabulce
-    if etf_comparison:
-        st.subheader("⚖️ Porovnání: Nemovitost vs. ETF")
-        
-        comp_col1, comp_col2, comp_col3 = st.columns(3)
-        
-        with comp_col1:
-            st.metric(label="🏢 IRR Nemovitost", value=f"{irr:.2f} %")
-            st.caption(f"Celkový zisk: {int(total_profit):,} Kč")
-        
-        with comp_col2:
-            st.metric(label="📈 IRR ETF (IWDA)", value=f"{etf_irr:.2f} %")
-            st.caption(f"Celkový zisk: {int(etf_profit):,} Kč")
-        
-        with comp_col3:
-            diff = irr - etf_irr
-            delta_color = "normal" if diff > 0 else "inverse"
-            st.metric(label="Rozdíl IRR", value=f"{diff:.2f} p.p.", delta=f"{diff:.2f} p.p.", delta_color=delta_color)
-            winner = "Nemovitost" if diff > 0 else "ETF"
-            st.caption(f"Lepší: {winner}")
-        
-        st.warning(f"""
-        **📌 Metodika srovnání:** Pokud nemovitost generuje záporné cashflow (nájem nepokryje splátku a náklady), 
-        model předpokládá, že v ETF scénáři by investor tuto částku ("dotaci") pravidelně investoval do ETF (DCA strategie).
-        
-        **Investováno do ETF navíc:** {int(etf_total_invested_czk - initial_investment):,} Kč (Suma měsíčních dotací za {holding_period} let).
-        """)
-        
-        st.divider()
-        st.subheader("📋 Detailní srovnání parametrů")
-        
-        comparison_data = {
-            "Metrika": [
-                "Počáteční investice (Hotovost)",
-                "Celkem investováno (vč. dotací)",
-                "Konečná hodnota",
-                "Čistý zisk",
-                "ROI celkem (%)",
-                "IRR roční (%)",
-                "Rizikový profil"
-            ],
-            "Nemovitost 🏢": [
-                f"{int(initial_investment):,} Kč",
-                f"{int(initial_investment + abs(sum(x for x in yearly_cashflows_arr if x < 0)) - initial_investment):,} Kč", # Zjednodušený odhad invested
-                f"{int(sale_proceeds_net):,} Kč",
-                f"{int(total_profit):,} Kč",
-                f"{roi:.1f} %",
-                f"{irr:.2f} %",
-                "Páka, neobsazenost, lokální trh"
-            ],
-            "ETF (IWDA) 📈": [
-                f"{int(initial_investment):,} Kč",
-                f"{int(etf_total_invested_czk):,} Kč",
-                f"{int(final_etf_value_czk):,} Kč",
-                f"{int(etf_profit):,} Kč",
-                f"{etf_roi:.1f} %",
-                f"{etf_irr:.2f} %",
-                "Likvidní, FX riziko, diverzifikované"
-            ]
-        }
-        
-        df_comparison = pd.DataFrame(comparison_data)
-        st.table(df_comparison)
-    else:
-        st.info("Pro zobrazení porovnání zapněte možnost 'Porovnat s ETF' v levém panelu v sekci 'Alternativní investice'.")
+    render_comparison_tab(inputs, metrics, derived_metrics)
 
 with tab4:
-    st.subheader("🎲 Monte Carlo Simulace")
-    st.markdown("Vyhodnocení rizik pomocí simulace tisíců možných scénářů vývoje trhu.")
-    
-    col_mc1, col_mc2, col_mc3, col_mc4 = st.columns(4)
-    with col_mc1:
-        sim_count = st.number_input("Počet simulací", 100, 5000, 1000, 100)
-    with col_mc2:
-        vol_app = st.number_input("Volatilita cen (%)", 0.0, 10.0, 2.0, 0.1, help="Směrodatná odchylka ročního růstu ceny nemovitosti.")
-    with col_mc3:
-        vol_rent = st.number_input("Volatilita nájmu (%)", 0.0, 10.0, 1.5, 0.1, help="Směrodatná odchylka ročního růstu nájmu.")
-    with col_mc4:
-        vol_etf = 0.0
-        if etf_comparison:
-            vol_etf = st.number_input("Volatilita ETF (%)", 0.0, 30.0, 15.0, 1.0, help="Směrodatná odchylka ročního výnosu ETF.")
-    
-    if st.button("🔴 Spustit Monte Carlo Simulaci", type="primary"):
-        with st.spinner(f"Probíhá výpočet {sim_count} scénářů..."):
-            mc_results = calculations.run_monte_carlo(
-                n_simulations=sim_count,
-                # Base params
-                purchase_price=purchase_price,
-                down_payment=down_payment,
-                one_off_costs=one_off_costs,
-                interest_rate=interest_rate,
-                loan_term_years=loan_term_years,
-                monthly_rent=monthly_rent,
-                monthly_expenses=monthly_expenses,
-                vacancy_months=vacancy_months,
-                tax_rate=tax_rate, 
-                holding_period=holding_period,
-                initial_fx_rate=initial_fx_rate,
-                fx_appreciation=fx_appreciation,
-                # Means
-                appreciation_rate_mean=appreciation_rate,
-                rent_growth_rate_mean=rent_growth_rate,
-                etf_comparison=etf_comparison,
-                etf_return_mean=etf_return,
-                # Volatilities
-                appreciation_rate_std=vol_app,
-                rent_growth_rate_std=vol_rent,
-                etf_return_std=vol_etf,
-                time_test_enabled=time_test_enabled,
-                time_test_years=time_test_years,
-                sale_fee_percent=sale_fee_percent
-            )
-            
-            # Parsing results
-            df_mc = pd.DataFrame(mc_results)
-            
-            # --- Results Presentation ---
-            st.success("Simulace dokončena!")
-            
-            # Metrics
-            avg_irr = df_mc['irr'].mean()
-            median_irr = df_mc['irr'].median()
-            prob_loss = (df_mc['total_profit'] < 0).mean() * 100
-            
-            mc_col1, mc_col2, mc_col3 = st.columns(3)
-            mc_col1.metric("Průměrné IRR", f"{avg_irr:.2f} %")
-            mc_col2.metric("Medián IRR", f"{median_irr:.2f} %")
-            mc_col3.metric("Pravděpodobnost ztráty", f"{prob_loss:.1f} %", delta_color="inverse")
-
-            # Histogram IRR
-            fig_hist = px.histogram(df_mc, x="irr", nbins=50, title="Rozložení dosahovaného IRR", labels={'irr': 'IRR (%)'}, color_discrete_sequence=['#4CAF50'])
-            fig_hist.add_vline(x=0, line_width=3, line_dash="dash", line_color="red", annotation_text="Break-even")
-            # Pokud máte proměnnou irr ze základního výpočtu, můžete ji zde použít:
-            # fig_hist.add_vline(x=irr, line_width=3, line_color="blue", annotation_text="Základní scénář")
-            st.plotly_chart(fig_hist, use_container_width=True)
-            
-            if etf_comparison:
-                st.subheader("Porovnání rizik s ETF")
-                fig_comp = go.Figure()
-                fig_comp.add_trace(go.Box(y=df_mc['irr'], name='Nemovitost IRR', marker_color='#4CAF50'))
-                fig_comp.add_trace(go.Box(y=df_mc['etf_irr'], name='ETF IRR', marker_color='#2196F3'))
-                fig_comp.update_layout(title="Rozptyl výnosů: Nemovitost vs. ETF")
-                st.plotly_chart(fig_comp, use_container_width=True)
+    render_monte_carlo_tab(inputs)
 
