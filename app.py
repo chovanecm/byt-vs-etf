@@ -22,6 +22,9 @@ st.markdown(
             min-width: 500px !important;
             max-width: 500px !important;
         }
+        .mobile-sidebar-hint {
+            display: none;
+        }
     }
     </style>
     """,
@@ -37,6 +40,18 @@ if "input_type_mode" not in st.session_state:
     st.session_state["input_type_mode"] = "LTV (%)"
 
 st.title("🏢 Analýza Investičního Bytu")
+
+# Mobile visual hint
+st.markdown(
+    """
+    <div class="mobile-sidebar-hint" style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #ff4b4b; font-size: 0.9rem;">
+        <strong>⚙️ Nastavení výpočtu</strong><br>
+        Pro zadání ceny, hypotéky a dalších parametrů klikněte na šipku <strong>&gt;</strong> vlevo nahoře.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 st.markdown("Interaktivní nástroj pro modelování výnosnosti investice do nemovitosti.")
 
 # --- Render Sidebar ---
