@@ -1,8 +1,12 @@
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
+from views.funding import render_funding_section
 
 def render_analysis_tab(inputs, metrics, derived_metrics):
+    # --- 0. FUNDING WIZARD (Top Section) ---
+    render_funding_section(inputs)
+
     # Unpack needed values
     holding_period = inputs['holding_period']
     etf_comparison = inputs['etf_comparison']

@@ -1,9 +1,11 @@
 import streamlit as st
 import calculations
 import scenario_manager
+import uuid
+import datetime
 
 def render_sidebar():
-    st.sidebar.header("⚙️ Vstupy")
+    st.sidebar.header("⚙️ Parametry investice")
 
     # Definice vizuálního layoutu (kontejnery)
     # 1. Sekce: Nákup
@@ -208,59 +210,8 @@ def render_sidebar():
         
         st.caption(f"Vlastní kapitál: {down_payment/1_000_000:.3f} mil. Kč | Úvěr: {mortgage_amount/1_000_000:.3f} mil. Kč")
 
-    # --- E. SPRÁVA NASTAVENÍ (Export/Import) ---
-    st.sidebar.markdown("---")
-    with st.sidebar.expander("💾 Uložit / Načíst Modelaci", expanded=False):
-        # 1. Export
-        st.caption("Uložit aktuální nastavení do souboru:")
-        json_conf = scenario_manager.export_json()
-        st.download_button(
-            label="⬇️ Stáhnout nastavení (JSON)",
-            data=json_conf,
-            file_name="nastaveni_investice.json",
-            mime="application/json",
-            help="Stáhne aktuální nastavení vstupů do souboru ve formátu JSON."
-        )
-        
-        st.markdown("---")
-        
-        # 2. Import
-        st.caption("Načíst nastavení ze souboru:")
-        
-        # Callback funkce pro aplikaci importu (musí běžet před vykreslením widgetů v dalším běhu)
-        def apply_json_import():
-            if "uploaded_scenario_json" in st.session_state and st.session_state.uploaded_scenario_json:
-                try:
-                    string_data = st.session_state.uploaded_scenario_json.getvalue().decode("utf-8")
-                    if scenario_manager.load_from_json(string_data):
-                        st.session_state["import_status"] = ("success", "✅ Nastavení úspěšně načteno!")
-                    else:
-                        st.session_state["import_status"] = ("error", "❌ Chyba: Neplatný formát souboru.")
-                except Exception as e:
-                     st.session_state["import_status"] = ("error", f"❌ Chyba při načítání: {str(e)}")
-
-        uploaded_file = st.file_uploader(
-            "Vyberte soubor JSON", 
-            type=["json"], 
-            label_visibility="collapsed", 
-            key="uploaded_scenario_json"
-        )
-        
-        if uploaded_file is not None:
-             st.button("🔄 Aplikovat nastavení ze souboru", on_click=apply_json_import)
-             
-             # Zobrazení výsledku operace (pokud existuje z callbacku)
-             if "import_status" in st.session_state:
-                 status_type, msg = st.session_state.import_status
-                 if status_type == "success":
-                     st.success(msg)
-                 else:
-                     st.error(msg)
-                 # Po zobrazení smažeme, aby zpráva nezůstávala viset
-                 del st.session_state.import_status
-
-    # Return inputs as a dictionary
-    return {
+    # Construct final inputs dictionary
+    final_inputs = {
         "tax_rate": tax_rate,
         "time_test_config": {"enabled": time_test_enabled, "years": time_test_years},
         "etf_comparison": etf_comparison,
@@ -282,3 +233,50 @@ def render_sidebar():
         "down_payment": down_payment,
         "mortgage_amount": mortgage_amount
     }
+
+    # --- E. SPRÁVA NASTAVENÍ (Legacy JSON) ---
+    with st.sidebar.expander("📂 Záloha do souboru (JSON)", expanded=False):
+        # 1. Export
+        st.caption("Uložit aktuální nastavení do souboru:")
+        json_conf = scenario_manager.export_json()
+        st.download_button(
+            label="⬇️ Stáhnout JSON",
+            data=json_conf,
+            file_name="nastaveni_investice.json",
+            mime="application/json"
+        )
+        
+        st.markdown("---")
+        
+        # 2. Import
+        st.caption("Načíst nastavení ze souboru:")
+        
+        def apply_json_import():
+            if "uploaded_scenario_json" in st.session_state and st.session_state.uploaded_scenario_json:
+                try:
+                    string_data = st.session_state.uploaded_scenario_json.getvalue().decode("utf-8")
+                    if scenario_manager.load_from_json(string_data):
+                        st.session_state["import_status"] = ("success", "✅ Nastavení úspěšně načteno!")
+                    else:
+                        st.session_state["import_status"] = ("error", "❌ Chyba: Neplatný formát souboru.")
+                except Exception as e:
+                     st.session_state["import_status"] = ("error", f"❌ Chyba při načítání: {str(e)}")
+
+        uploaded_file = st.file_uploader(
+            "Vyberte soubor JSON", 
+            type=["json"], 
+            label_visibility="collapsed", 
+            key="uploaded_scenario_json"
+        )
+        
+        if uploaded_file is not None:
+             st.button("🔄 Aplikovat JSON", on_click=apply_json_import)
+             if "import_status" in st.session_state:
+                 status_type, msg = st.session_state.import_status
+                 if status_type == "success":
+                     st.success(msg)
+                 else:
+                     st.error(msg)
+                 del st.session_state.import_status
+
+    return final_inputs

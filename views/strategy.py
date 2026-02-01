@@ -20,39 +20,79 @@ def render_strategy_tab(inputs, metrics, derived_metrics):
     st.header("🔮 Strategický Kompas")
     st.markdown("Nástroj pro řízení životního cyklu investice. Pomáhá určit, kdy je čas **držet**, **refinancovat**, nebo **prodat**.")
     
-    # --- 1. SETTINGS & CHART (Context) ---
+    # --- 1. SETTINGS (Split for clarity) ---
     
-    # Expander pro nastavení, aby nerušil graf
-    with st.expander("⚙️ Nastavení simulace trhu (Refinancování & Benchmark)", expanded=False):
-        c_set1, c_set2 = st.columns(2)
-        with c_set1:
-            st.markdown("**Benchmark (Alternativa)**")
-            st.caption(f"Porovnáváme s výnosem: **{etf_return if etf_comparison else 0} % p.a.**")
-            if not etf_comparison:
-                st.warning("⚠️ Nemáte zapnuté porovnání s ETF v levém menu.")
-        
-        with c_set2:
-            st.markdown("**Refinancování (Tržní podmínky)**")
-            target_ltv_ref = st.slider("Cílové LTV nové hypotéky (%)", 30, 90, 70, key="target_ltv_ref")
-            market_ref_rate = st.number_input("Aktuální sazba hypoték (%)", 1.0, 10.0, inputs['interest_rate'], 0.1, key="market_ref_rate")
+    st.info("💡 **Jak číst tento graf:** Zelená křivka ukazuje, jak tvrdě pracují vaše peníze v nemovitosti (ROE). Jakmile klesne pod vaši alternativu (oranžová čára), vaše peníze 'zlenivěly' a je čas zvážit prodej nebo refinancování.")
 
-    # Výpočet decision metrik s novými inputy
+    col_inputs_1, col_inputs_2 = st.columns([1, 1])
+    
+    with col_inputs_1:
+         # MAIN DECISION INPUT
+        st.markdown("### 🎯 S čím porovnáváme?")
+        default_benchmark = etf_return if etf_comparison else 8.0
+        
+        opportunity_cost_rate = st.number_input(
+            "Alternativní výnos (Opportunity Cost) % p.a.", 
+            min_value=0.0, 
+            max_value=30.0, 
+            value=default_benchmark, 
+            step=0.5,
+            help="Pokud nemovitost prodáte a peníze investujete jinam (např. ETF nebo jiný byt), kolik očekáváte výnos? Toto je vaše 'laťka', kterou musí nemovitost překonat.",
+            key="strat_opp_cost_rate"
+        )
+    
+    # Placeholder for layout balance if needed
+    with col_inputs_2:
+        st.write("") # Empty 
+
+    # --- SIMULACE DLOUHÉHO HORIZONTU (30 let) ---
+    # Aby uživatel viděl křivku i ZA hranicí svého původního holding_period
+    STRATEGY_HORIZON_YEARS = 30
+    
+    # Vytvoříme kopii vstupů a přepíšeme holding_period pro účely strategie
+    inputs_long = inputs.copy()
+    inputs_long['holding_period'] = STRATEGY_HORIZON_YEARS
+    
+    # Přepočítáme metriky pro dlouhý horizont
+    # Musíme explicitně namapovat argumenty, protože inputs dict používá jiné klíče než funkce (např. time_test_config vs time_test_vars)
+    metrics_long = calculations.calculate_metrics(
+        purchase_price=inputs_long['purchase_price'],
+        down_payment=inputs_long['down_payment'],
+        one_off_costs=inputs_long['one_off_costs'],
+        interest_rate=inputs_long['interest_rate'],
+        loan_term_years=inputs_long['loan_term_years'],
+        monthly_rent=inputs_long['monthly_rent'],
+        monthly_expenses=inputs_long['monthly_expenses'],
+        vacancy_months=inputs_long['vacancy_months'],
+        tax_rate=inputs_long['tax_rate'],
+        appreciation_rate=inputs_long['appreciation_rate'],
+        rent_growth_rate=inputs_long['rent_growth_rate'],
+        holding_period=inputs_long['holding_period'],
+        etf_comparison=inputs_long['etf_comparison'],
+        etf_return=inputs_long['etf_return'],
+        initial_fx_rate=inputs_long['initial_fx_rate'],
+        fx_appreciation=inputs_long['fx_appreciation'],
+        time_test_vars=inputs_long['time_test_config'], # ZDE BYL PROBLÉM (mapping config -> vars)
+        sale_fee_percent=inputs_long['sale_fee_percent']
+    )
+
+    # Výpočet decision metrik s lokálním opportunity cost na dlouhém horizontu
     df_decision = calculations.calculate_marginal_roe(
-        metrics, 
+        metrics_long, 
         purchase_price=purchase_price,
         one_off_costs=one_off_costs,
         sale_fee_percent=sale_fee_percent,
         tax_rate=tax_rate,
         time_test_vars=time_test_config,
-        etf_return_rate=etf_return if etf_comparison else 0,
+        etf_return_rate=opportunity_cost_rate, # POUŽIJEME LOKÁLNÍ INPUT
         interest_rate_current=interest_rate,
-        market_refinance_rate=market_ref_rate,
-        target_ltv_refinance=target_ltv_ref
+        market_refinance_rate=interest_rate, # Default pro graf (nepouziva se)
+        target_ltv_refinance=70 # Default pro graf (nepouziva se)
     )
 
     # FULL WIDTH CHART
     st.subheader("1. Mapa efektivity kapitálu")
-    st.caption("Kdy začne být vaše investice 'líná'? Sledujte, kde se zelená křivka (Nemovitost) protne s oranžovou (Benchmark).")
+    st.caption(f"Srovnáváme výnos vaší Equity (zelená) vs. Nová příležitost {opportunity_cost_rate}% (oranžová).")
 
     fig_roe = go.Figure()
     
@@ -60,23 +100,25 @@ def render_strategy_tab(inputs, metrics, derived_metrics):
     fig_roe.add_trace(go.Scatter(
         x=df_decision['Year'],
         y=df_decision['Marginal_ROE'],
-        mode='lines+markers',
+        mode='lines', # Odstraněny markers pro čistší look na dlouhé křivce
         name='Výnos Equity (ROE) Nemovitosti',
         line=dict(color='#2E7D32', width=4), # Tmavší zelená
         marker=dict(size=8, color='#2E7D32'),
         hovertemplate='Rok %{x}<br>Výnos Equity: %{y:.2f}%<extra></extra>'
     ))
     
-    # Benchmark Line
-    if etf_comparison:
-        fig_roe.add_trace(go.Scatter(
-            x=df_decision['Year'],
-            y=df_decision['ETF_Benchmark'],
-            mode='lines',
-            name=f'Váš Cíl / Benchmark ({etf_return}%)',
-            line=dict(color='#FF5722', width=3, dash='dash'),
-            hovertemplate='Benchmark: %{y}%<extra></extra>'
-        ))
+    # Benchmark Line (Active Opportunity)
+    fig_roe.add_trace(go.Scatter(
+        x=df_decision['Year'],
+        y=df_decision['ETF_Benchmark'],
+        mode='lines',
+        name=f'Nová příležitost ({opportunity_cost_rate}%)',
+        line=dict(color='#FF9800', width=3, dash='dashdot'), # Oranžová pro "Switch"
+        hovertemplate='Cíl: %{y}%<extra></extra>'
+    ))
+    
+    # Původní Global Benchmark (Passive) - volitelně pro kontext?
+    # Nechme to jednoduché. Uživatel si opportunity cost definoval nahoře.
     
     fig_roe.update_layout(
         xaxis_title="Rok od nákupu",
@@ -87,15 +129,25 @@ def render_strategy_tab(inputs, metrics, derived_metrics):
         height=320
     )
     
+    # Přidat vertikální čáru pro aktuálně zvolený Holding Period
+    fig_roe.add_vline(
+        x=holding_period, 
+        line_width=2, 
+        line_dash="dot", 
+        line_color="gray", 
+        annotation_text="Váš plán (zleva)", 
+        annotation_position="top right"
+    )
+    
     st.plotly_chart(fig_roe, use_container_width=True)
 
     # Interpretace - Alert
     below_target = df_decision[df_decision['Marginal_ROE'] < df_decision['ETF_Benchmark']]
     if not below_target.empty:
         cross_year = int(below_target.iloc[0]['Year'])
-        st.warning(f"📉 **Varování:** Od **roku {cross_year}** klesá efektiva nemovitosti pod váš cíl. Peníze začínají 'lenivět'.")
+        st.warning(f"📉 **Bod zlomu (Rok {cross_year}):** Od tohoto roku by se vyplatilo prodat a peníze přesunout do vaší nové příležitosti ({opportunity_cost_rate}%).")
     else:
-        st.success(f"🚀 **Skvělé:** Po celou dobu {len(df_decision)} let nemovitost překonává váš benchmark. Kapitál pracuje efektivně.")
+        st.success(f"🚀 **Skvělé:** Po celou dobu {len(df_decision)} let nemovitost překonává vaši alternativu ({opportunity_cost_rate}%). Není důvod prodávat.")
 
     st.markdown("---")
 
@@ -109,19 +161,20 @@ def render_strategy_tab(inputs, metrics, derived_metrics):
             "⏱️ Vyberte rok, ve kterém se rozhodujete:", 
             min_value=1, 
             max_value=len(df_decision), 
-            value=holding_period,
+            value=holding_period if holding_period <= len(df_decision) else 10,
             key="strategy_year_selector_main"
         )
     
-    # Get row for selected year
+    # Get row for selected year (row is Series from LONG metrics)
     if selected_year <= len(df_decision):
         row = df_decision.iloc[selected_year - 1]
+
         
         # --- INPUT: Override pro aktuální cenu ---
         st.subheader(f"Detailní Rozhodování pro Rok {selected_year}")
         
-        # Default value from model
-        model_price = metrics['series']['property_values'][selected_year-1]
+        # Default value from model (Using metrics_long to support years beyond holding_period)
+        model_price = metrics_long['series']['property_values'][selected_year-1]
         
         # UX Fix: Pokud uživatel změní rok (holding_period), chceme aktualizovat předvyplněnou cenu (override).
         # Princip nejmenšího překvapení: Uživatel očekává, že override se týká vybraného roku.
@@ -134,8 +187,14 @@ def render_strategy_tab(inputs, metrics, derived_metrics):
              st.session_state["price_override"] = float(model_price)
              st.session_state["last_selected_year"] = selected_year
 
-        col_price_override, _ = st.columns([1, 2])
-        with col_price_override:
+        # Zobrazení detailního rozhodování
+        
+        # Levý sloupec: Override ceny
+        col_price_adjust, col_refinance_control = st.columns([1, 1])
+
+        with col_price_adjust:
+             st.subheader(f"Detailní Rozhodování pro Rok {selected_year}")
+             st.caption("Pohled pod kapotu: Změňte parametry a sledujte dopad.")
              user_price_override = st.number_input(
                  f"Aktuální tržní cena v roce {selected_year} (Kč)", 
                  value=float(model_price), 
@@ -144,10 +203,21 @@ def render_strategy_tab(inputs, metrics, derived_metrics):
                  help="Můžete upravit odhad ceny pro přesnější výpočet možností refinancování a prodeje.",
                  key="price_override"
              )
-        
+
+        # Pravý sloupec: Kontrola refinancování
+        with col_refinance_control:
+             st.markdown("<div style='height: 24px'></div>", unsafe_allow_html=True) # Spacer
+             with st.container(border=True): # Oranžový rámeček nebo border
+                 st.caption("🔧 Parametry pro Turbo Efekt")
+                 cr1, cr2 = st.columns(2)
+                 with cr1:
+                     target_ltv_ref = st.slider("Cílové LTV (%)", 30, 90, 70, key="target_ltv_ref_detail")
+                 with cr2:
+                     market_ref_rate = st.number_input("Očk. Úrok (%)", 1.0, 10.0, inputs['interest_rate'], 0.1, key="market_ref_rate_detail")
+
         # Pře-počítání metrik pro tento konkrétní vstup
         # Použijeme dluh z modelu (ten je daný splátkovým kalendářem), ale cenu od uživatele
-        current_mtg_balance = metrics['series']['mortgage_balances'][selected_year-1]
+        current_mtg_balance = metrics_long['series']['mortgage_balances'][selected_year-1]
         
         override_metrics = calculations.calculate_decision_metrics_for_price(
             property_value=user_price_override,
@@ -158,81 +228,73 @@ def render_strategy_tab(inputs, metrics, derived_metrics):
             tax_rate=tax_rate,
             time_test_vars=time_test_config,
             holding_years=selected_year,
-            target_ltv_ref=target_ltv_ref,
-            market_ref_rate=market_ref_rate,
+            etf_return_rate=opportunity_cost_rate,
             interest_rate_current=interest_rate,
-            etf_return_rate=etf_return if etf_comparison else 0
+            market_ref_rate=market_ref_rate,
+            target_ltv_ref=target_ltv_ref
         )
         
         # Update values for display
-        roe_now = row['Marginal_ROE'] # ROE necháme z modelu (historické) nebo bychom museli přepočítat i Equity_Start. Pro jednoduchost bereme model.
+        roe_now = row['Marginal_ROE'] 
         etf_now = row['ETF_Benchmark']
         gap = row['Gap']
         
-        # Těmito hodnotami nahradíme ty z tabulky pro sekci níže
         refinance_amount = override_metrics['Refinance_CashOut']
         refinance_benefit = override_metrics['Refinance_Arbitrage_CZK']
         net_liquidation_value_user = override_metrics['Net_Liquidation_Value']
         
-        equity_locked_user = user_price_override - current_mtg_balance # Simple equity at end of year
+        # --- ROZDĚLENÍ DLOUHÉ SEKCE (Diagnostika / Turbo) ---
+        st.divider()
         
-        # --- DEBUG INFO ---
-        # st.caption(f"🔧 DIAGNOSTIKA: Cena={user_price_override/1e6:.2f}M, Dluh={current_mtg_balance/1e6:.2f}M, Equity(Hold)={equity_locked_user/1e6:.2f}M, Cash(Sell)={net_liquidation_value_user/1e6:.2f}M")
+        c_diag, c_turbo = st.columns([1, 1])
         
-        c_dec1, c_dec2 = st.columns([1, 1])
-        
-        with c_dec1:
+        # --- 1. DIAGNOSTIKA (Vlevo) ---
+        with c_diag:
             st.markdown("### 1. Diagnostika: Líný nebo pilný kapitál?")
             st.caption("Porovnáváme výnos vaší 'uvězněné' equity v nemovitosti oproti vašemu benchmarku.")
             
+            # Gauge chart / Metric logic
             if gap > 0:
                 st.warning(f"⚠️ **Kapitál leniví (ROE < Benchmark)**")
                 st.markdown(f"""
                 Váš milion korum v nemovitosti ("Net Equity") nyní vydělává jen **{roe_now:.2f} % ročně**. 
                 Kdybyste nemovitost prodali a peníze dali do vašeho benchmarku ({etf_now} %), **vyděláte více**.
-                
-                **Možnosti:**
-                1. **Prodat:** Ukončit investici a přesunout kapitál.
-                2. **Agresivně refinancovat:** Snížit equity v domě (viz vpravo) a zvýšit celkové ROE.
                 """)
+                st.info("💡 **Doporučení:** Zvažte prodej nebo agresivní refinancování (viz vpravo).")
             else:
                 st.success(f"✅ **Kapitál pracuje tvrdě (ROE > Benchmark)**")
                 st.markdown(f"""
                 Výnos vaší equity v nemovitosti (**{roe_now:.2f} %**) stále překonává vaši alternativu ({etf_now} %).
-                
-                Z pohledu efektivity kapitálu **dává smysl nemovitost dále držet**.
                 """)
+                st.caption("Z pohledu efektivity kapitálu dává smysl nemovitost dále držet.")
 
-        with c_dec2:
+        # --- 2. TURBO EFEKT (Vpravo) ---
+        with c_turbo:
             st.markdown("### 2. Turbo efekt: Refinancování")
-            st.caption("Můžeme zvýšit výnos tím, že si půjčíme levné peníze proti domu a zainvestujeme je?")
-            
-            # rate_spread unused
+            st.caption(f"Simulace vytažení hotovosti při **{target_ltv_ref}% LTV** a úroku **{market_ref_rate}%**.")
             
             if refinance_amount > 100000:
-                # 1. Částka k dispozici
-                st.metric(
-                    label=f"Hodnota pro další nákup (Cash-Out)", 
-                    value=f"{int(refinance_amount):,} Kč",
-                    delta="Možná akontace na další byt",
-                    delta_color="normal"
-                )
-                
-                # 2. Arbitrážní analýza
-                # Vysvětlení spreadu už není jednoduché číslo, spíše výsledek v CZK
-                
-                if refinance_benefit > 0:
-                    st.success(f"✅ **Doporučeno: Pozitivní páka**")
-                    st.markdown(f"**Co to znamená?**")
-                    st.markdown(f"Vyplatí se vzít si hypotéku (i s úrokem {market_ref_rate}%) a vytažené peníze investovat do benchmarku.")
+                tur_c1, tur_c2 = st.columns(2)
+                with tur_c1:
+                   st.metric(
+                    label="Cash-Out (Hotovost)", 
+                    value=f"{int(refinance_amount/1000):,} tis. Kč",
+                    help="Čistá hotovost, kterou získáte po refinancování a splacení původního úvěru."
+                   )
+                with tur_c2:
+                    color_arb = "normal" if refinance_benefit > 0 else "inverse"
                     st.metric(
-                        label="Čistý zisk navíc (Arbitráž)",
-                        value=f"+{int(refinance_benefit):,} Kč / rok",
-                        help="O tolik bohatší budete každý rok, pokud provedete refinancování a investici, oproti stavu, kdy jen 'držíte'."
+                        label="Arbitráž (Zisk/rok)",
+                        value=f"{int(refinance_benefit):,} Kč",
+                        delta="Výhodné" if refinance_benefit > 0 else "Nevýhodné",
+                        delta_color=color_arb,
+                        help="Rozdíl mezi výnosem investovaného Cash-Outu a zvýšenou splátkou úroků."
                     )
+
+                if refinance_benefit > 0:
+                    st.success(f"✅ **Pozitivní páka:** Vyplatí se.")
                 else:
-                    st.error(f"⛔ **Nevýhodné: Negativní páka**")
-                    st.markdown("Úrok nové hypotéky je moc vysoký. Vytažené peníze by v benchmarku nevydělaly ani na splátky úroků.")
+                    st.error(f"⛔ **Negativní páka:** Nový úrok je moc drahý.")
             else:
                 st.info("Zatím nemáte v domě dostatek volného kapitálu (Equity) pro smysluplné refinancování.")
 

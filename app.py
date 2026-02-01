@@ -1,6 +1,10 @@
 import streamlit as st
 import numpy_financial as npf
 import calculations
+import uuid
+
+# --- SESSION STATE INITIALIZATION ---
+# (Portfolio init removed)
 
 # Import components and views
 from components.sidebar import render_sidebar
@@ -211,7 +215,7 @@ with kpi2:
 with kpi3:
     st.metric(
         label="🏦 Čistý zisk (za celou dobu)",
-        value=f"{int(total_profit / 1_000_000):.2f} mil. Kč",
+        value=f"{total_profit / 1_000_000:.2f} mil. Kč",
         help=f"O tolik budete bohatší za {holding_period} let (po zaplacení banky, daní a oprav)."
     )
     
@@ -237,10 +241,8 @@ with kpi4:
 st.divider()
 
 # --- TABS ---
-# Definujeme taby pouze jednou. Původní definice nad tímto blokem pravděpodobně zůstala a způsobila duplicitu.
-# Zkontrolujte, zda ve skriptu nejsou definovány 'tab1, tab2...' vícekrát.
 t_analysis, t_cashflow, t_strategy, t_compare, t_monte = st.tabs([
-    "📊 Analýza Investice", 
+    "📊 Analýza (Draft)", 
     "💰 Cashflow Detail", 
     "🔮 Strategie & Rozhodování", 
     "⚖️ Porovnání", 
@@ -286,17 +288,6 @@ with t_compare:
     render_comparison_tab(inputs, metrics, derived_metrics)
     
 with t_monte:
-    render_monte_carlo_tab(inputs, metrics)
+    render_monte_carlo_tab(inputs, metrics, derived_metrics)
 
-with tab_strat:
-    render_strategy_tab(inputs, metrics, derived_metrics)
-    
-with tab2:
-    render_cashflow_tab(inputs, metrics, derived_metrics)
-
-with tab3:
-    render_comparison_tab(inputs, metrics, derived_metrics)
-
-with tab4:
-    render_monte_carlo_tab(inputs)
 

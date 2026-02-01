@@ -4,7 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import calculations
 
-def render_monte_carlo_tab(inputs):
+def render_monte_carlo_tab(inputs, metrics=None, derived_metrics=None):
     etf_comparison = inputs['etf_comparison']
     purchase_price = inputs['purchase_price']
     down_payment = inputs['down_payment']
