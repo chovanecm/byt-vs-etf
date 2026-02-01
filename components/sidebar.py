@@ -60,14 +60,15 @@ def render_sidebar():
                 fx_appreciation = 0
 
             st.markdown("---")
-            st.markdown("**Inflace a Reálná hodnota**")
+            # st.markdown("**Inflace a Reálná hodnota**")
             # DRY: Use existing rent_growth_rate as general inflation proxy
-            show_real_values = st.checkbox(
-                "Zobrazit v reálných cenách (očištěno o inflaci)", 
-                value=False, 
-                key="show_real_values",
-                help="Pro přepočet na 'dnešní ceny' bude použita hodnota 'Inflace nájmu a nákladů' z sekce Nájem."
-            )
+            # show_real_values = st.checkbox(
+            #     "Zobrazit v reálných cenách (očištěno o inflaci)", 
+            #     value=False, 
+            #     key="show_real_values",
+            #     help="Pro přepočet na 'dnešní ceny' bude použita hodnota 'Inflace nájmu a nákladů' z sekce Nájem."
+            # )
+            show_real_values = False
 
     # --- B. PARAMETRY NÁKUPU (1. Sekce) ---
     with c_buy:

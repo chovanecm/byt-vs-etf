@@ -20,27 +20,16 @@ def render_analysis_tab(inputs, metrics, derived_metrics):
         etf_values_czk = metrics['series']['real_etf_values']
         equity_values = [p - m for p, m in zip(property_values, mortgage_balances)]
         
-        # Discount scalar values for consistency
-        # Assuming general_inflation_rate from inputs is used
+        # Use simple approximate discounting for Single Scalar Values displayed in text if series not available
         inf_rate = inputs.get('general_inflation_rate', 2.0)
-        # Handle if inf_rate is list/array (Monte Carlo legacy?) - unlikely here in detailed view
-        if isinstance(inf_rate, (list, tuple)): inf_rate = 2.0
-            
         discount_factor = (1 + inf_rate / 100) ** holding_period
         
+        # Use strictly calculated real series
         sale_proceeds_net = derived_metrics['sale_proceeds_net'] / discount_factor
-        total_cf_sum = derived_metrics['total_cf_sum'] / discount_factor 
-        # Note: Recalculating total_cf_sum from real cashflow series would be more accurate 
-        # (sum of discounted CFs), but simply discounting nominal sum is acceptable approximation 
-        # for this high-level summary if we assume uniform distribution, which is NOT true.
-        # Better: Sum the real operating cashflows.
         
+        # Total Real Operating Cashflow
         real_op_cf = metrics['series']['real_operating_cashflows']
-        # The total_cf_sum usually means "rental income net of expenses" accumulated?
-        # In app.py: total_cf_sum = total_profit - sale_proceeds_net + initial_investment
-        # = Sum(YearlyCFs excluding sale)
-        # So we can sum the real_operating_cashflows (excluding Y0 which is investment)
-        total_cf_sum = sum(real_op_cf) 
+        total_cf_sum = sum(real_op_cf)
 
         st.info(f"ℹ️ Zobrazeno v **REÁLNÝCH CENÁCH** (očištěno o inflaci {inf_rate}% p.a.).")
     else:
@@ -52,7 +41,14 @@ def render_analysis_tab(inputs, metrics, derived_metrics):
         sale_proceeds_net = derived_metrics['sale_proceeds_net']
         total_cf_sum = derived_metrics['total_cf_sum']
     
-    total_profit = metrics['total_profit'] # Note: Profit logic might need adjustment if real values strictly requested for summary too
+    # Ensure total_profit matches the view mode (Real vs Nominal)
+    # The parent (app.py) might have updated the 'total_profit' local variable, but here we read from 'metrics'.
+    # If show_real is true, we should use 'real_total_profit' from metrics if available.
+    if show_real:
+        total_profit = metrics.get('real_total_profit', metrics['total_profit'])
+    else:
+        total_profit = metrics['total_profit']
+        
     initial_investment = metrics['initial_investment']
 
     # sale_proceeds_net and total_cf_sum in derived_metrics are currently Nominal-only.

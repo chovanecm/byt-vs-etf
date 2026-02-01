@@ -4,15 +4,34 @@ import pandas as pd
 def render_cashflow_tab(inputs, metrics, derived_metrics):
     holding_period = inputs['holding_period']
     etf_comparison = inputs['etf_comparison']
+    show_real = inputs.get('show_real_values', False)
     
-    property_values = metrics['series']['property_values']
-    mortgage_balances = metrics['series']['mortgage_balances']
-    yearly_cashflows_arr = metrics['series']['cashflows']
-    etf_values_czk = metrics['series']['etf_values']
-    etf_cashflows_arr = metrics['series']['etf_cashflows']
-    
-    equity_values = derived_metrics['equity_values']
+    if show_real:
+        property_values = metrics['series']['real_property_values']
+        mortgage_balances = metrics['series']['real_mortgage_balances']
+        etf_values_czk = metrics['series']['real_etf_values']
+        
+        # Use pre-calculated real cashflows series from calculations.py
+        yearly_cashflows_arr = metrics['series'].get('real_cashflows')
+        
+        # Fallback if logic mismatch (e.g. key missing in old state)
+        if not yearly_cashflows_arr:
+            inf_rate = inputs.get('general_inflation_rate', 2.0)
+            nominal_cfs = metrics['series']['cashflows']
+            yearly_cashflows_arr = [nominal_cfs[0]] + [nominal_cfs[i] / ((1 + inf_rate/100)**i) for i in range(1, len(nominal_cfs))]
 
+        equity_values = [p - m for p, m in zip(property_values, mortgage_balances)]
+        
+        st.info(f"ℹ️ Zobrazeno v **REÁLNÝCH CENÁCH** (očištěno o inflaci {inputs.get('general_inflation_rate', 2.0)}% p.a.).")
+    else:
+        property_values = metrics['series']['property_values']
+        mortgage_balances = metrics['series']['mortgage_balances']
+        yearly_cashflows_arr = metrics['series']['cashflows']
+        etf_values_czk = metrics['series']['etf_values']
+        equity_values = derived_metrics['equity_values']
+
+    etf_cashflows_arr = metrics['series']['etf_cashflows'] # This we handle inside ETF logic below if needed
+    
     st.subheader("Detailní roční cashflow")
     
     # Vytvoření detailní tabulky

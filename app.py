@@ -123,6 +123,20 @@ try:
     etf_values_czk = series['etf_values']
     etf_cashflows_arr = series['etf_cashflows']
 
+    # --- Real Value Adjustment for Dashboard KPI ---
+    show_real = inputs.get('show_real_values', False)
+    if show_real:
+        market_total_profit = metrics.get('real_total_profit', total_profit)
+        # Check if key exists (backward compat for old MC maybe), fallback to on-the-fly
+        if market_total_profit == total_profit and total_profit != 0: 
+             # Key missing or identical (unlikely if rates > 0), calc fallback
+             inf_rate = inputs.get('general_inflation_rate', 2.0)
+             real_cfs = [yearly_cashflows_arr[i] / ((1 + inf_rate/100)**i) for i in range(len(yearly_cashflows_arr))]
+             market_total_profit = sum(real_cfs)
+        
+        total_profit = market_total_profit
+        monthly_cashflow = metrics.get('real_monthly_cashflow_y1', monthly_cashflow)
+
     # --- Dopočítáváme pouze věci specifické pro UI zobrazení (Derived Metrics) ---
     derived_metrics = {}
 

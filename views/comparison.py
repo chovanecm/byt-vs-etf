@@ -19,6 +19,36 @@ def render_comparison_tab(inputs, metrics, derived_metrics):
     final_etf_value_czk = derived_metrics['final_etf_value_czk']
     
     roi = derived_metrics['roi']
+    
+    show_real = inputs.get('show_real_values', False)
+    if show_real:
+        inf_rate = inputs.get('general_inflation_rate', 2.0)
+        df_final = (1 + inf_rate / 100) ** holding_period
+        
+        # Use pre-calculated real total profit if available
+        total_profit = metrics.get('real_total_profit')
+        if total_profit is None:
+             # Fallback
+             nominal_cfs = metrics['series']['cashflows']
+             real_cfs = [nominal_cfs[0]] + [nominal_cfs[i] / ((1 + inf_rate/100)**i) for i in range(1, len(nominal_cfs))]
+             total_profit = sum(real_cfs)
+        
+        sale_proceeds_net = sale_proceeds_net / df_final
+        final_etf_value_czk = metrics['series']['real_etf_values'][-1] if metrics['series']['real_etf_values'] else 0
+        
+        # Recalc ETF invested sum from discounted flows
+        etf_flows = metrics['series']['etf_cashflows']
+        # Real ETF Flows (recalc on spot as it is specific to this view's breakdown)
+        real_etf_flows = [etf_flows[i] / ((1 + inf_rate/100)**i) for i in range(len(etf_flows))]
+        # Invested is sum of negative flows (excluding last)
+        real_invested_sum = sum([-f for f in real_etf_flows if f < 0])
+        etf_total_invested_czk = real_invested_sum
+        etf_profit = final_etf_value_czk - etf_total_invested_czk
+        
+        st.info(f"ℹ️ Zobrazeno v **REÁLNÝCH CENÁCH** (očištěno o inflaci {inf_rate}% p.a.).")
+    else:
+        # Default nominal
+        pass
 
     # Detailní porovnání v tabulce
     if etf_comparison:

@@ -194,29 +194,46 @@ def calculate_metrics(
     real_operating_cashflows = []
     real_mortgage_balances = []
     real_etf_values = []
+    real_cashflows = [] # New: Total cashflows discounted
+    
+    # Pre-calculate inflation rate scalar
+    inf_rate = general_inflation_rate
+    if isinstance(general_inflation_rate, (list, np.ndarray)):
+            inf_rate = np.mean(general_inflation_rate)
+            
+    # Handle Year 0 (Investment) for Total Cashflows
+    # Investment happens at T=0, so Nominal = Real usually.
+    real_cashflows.append(yearly_cashflows_arr[0]) 
     
     for i, year in enumerate(range(1, int(holding_period) + 1)):
-        # Determine strict inflation rate (scalar)
-        inf_rate = general_inflation_rate
-        if isinstance(general_inflation_rate, (list, np.ndarray)):
-             inf_rate = np.mean(general_inflation_rate) # Fallback for MC
-             
         df = (1 + inf_rate / 100) ** year
         
         real_property_values.append(property_values[i] / df)
         real_operating_cashflows.append(operating_cashflows[i] / df)
         real_mortgage_balances.append(mortgage_balances[i] / df)
         
+        # Total Cashflow (Nominal index i corresponds to Year i because Year 0 is index 0)
+        # But wait, yearly_cashflows_arr has length holding_period + 1.
+        # loop `enumerate(range(1...))` gives i=0 for year=1.
+        # yearly_cashflows_arr[1] is Year 1.
+        real_cashflows.append(yearly_cashflows_arr[i+1] / df)
+        
         if etf_comparison and i < len(etf_values_czk):
              real_etf_values.append(etf_values_czk[i] / df)
         else:
              real_etf_values.append(0)
+             
+    # Real Aggregates
+    real_total_profit = sum(real_cashflows)
+    real_monthly_cashflow_y1 = (annual_cashflow_year1 / 12) / (1 + inf_rate / 100)
     
     return {
         "irr": irr,
         "total_profit": total_profit,
+        "real_total_profit": real_total_profit, # New
         "etf_irr": etf_irr,
         "monthly_cashflow_y1": annual_cashflow_year1 / 12,
+        "real_monthly_cashflow_y1": real_monthly_cashflow_y1, # New
         "tax_paid_y1": tax_y1,
         "capital_gains_tax": capital_gains_tax,
         "initial_investment": initial_investment,
@@ -226,6 +243,7 @@ def calculate_metrics(
             "mortgage_balances": mortgage_balances,
             "operating_cashflows": operating_cashflows,
             "cashflows": yearly_cashflows_arr,
+            "real_cashflows": real_cashflows, # New
             "etf_values": etf_values_czk,
             "etf_cashflows": etf_cashflows_arr,
             "real_property_values": real_property_values,
