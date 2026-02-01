@@ -33,8 +33,8 @@ def render_strategy_tab(inputs, metrics, derived_metrics):
         
         # Nové parametry pro refinancování (citlivostní analýza)
         st.markdown("**Simulace Refinancování**")
-        target_ltv_ref = st.slider("Cílové LTV úvěru (%)", 30, 90, 70, help="Na kolik % hodnoty nemovitosti byste si chtěli znovu půjčit?")
-        market_ref_rate = st.number_input("Nová úroková sazba (%)", 1.0, 10.0, 5.0, 0.1, help="Za jakou sazbu byste dnes dostali hypotéku?")
+        target_ltv_ref = st.slider("Cílové LTV úvěru (%)", 30, 90, 70, help="Na kolik % hodnoty nemovitosti byste si chtěli znovu půjčit?", key="target_ltv_ref")
+        market_ref_rate = st.number_input("Nová úroková sazba (%)", 1.0, 10.0, 5.0, 0.1, help="Za jakou sazbu byste dnes dostali hypotéku?", key="market_ref_rate")
         
         if market_ref_rate > interest_rate:
             st.warning(f"⚠️ Pozor: Nová sazba ({market_ref_rate}%) je vyšší než současná ({interest_rate}%).")
@@ -105,6 +105,17 @@ def render_strategy_tab(inputs, metrics, derived_metrics):
         # Default value from model
         model_price = metrics['series']['property_values'][selected_year-1]
         
+        # UX Fix: Pokud uživatel změní rok (holding_period), chceme aktualizovat předvyplněnou cenu (override).
+        # Princip nejmenšího překvapení: Uživatel očekává, že override se týká vybraného roku.
+        # Check if year changed since last render
+        if "last_selected_year" not in st.session_state:
+            st.session_state["last_selected_year"] = selected_year
+        
+        if st.session_state["last_selected_year"] != selected_year:
+             # Reset override to model price for the new year
+             st.session_state["price_override"] = float(model_price)
+             st.session_state["last_selected_year"] = selected_year
+
         col_price_override, _ = st.columns([1, 2])
         with col_price_override:
              user_price_override = st.number_input(
@@ -112,7 +123,8 @@ def render_strategy_tab(inputs, metrics, derived_metrics):
                  value=float(model_price), 
                  step=100_000.0, 
                  format="%.0f",
-                 help="Můžete upravit odhad ceny pro přesnější výpočet možností refinancování a prodeje."
+                 help="Můžete upravit odhad ceny pro přesnější výpočet možností refinancování a prodeje.",
+                 key="price_override"
              )
         
         # Pře-počítání metrik pro tento konkrétní vstup

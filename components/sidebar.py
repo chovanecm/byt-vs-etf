@@ -1,5 +1,6 @@
 import streamlit as st
 import calculations
+import scenario_manager
 
 def render_sidebar():
     st.sidebar.header("⚙️ Vstupy")
@@ -26,7 +27,8 @@ def render_sidebar():
                 ["FO (Časový test)", "Vždy danit", "Nikdy nedanit"],
                 index=0,
                 label_visibility="collapsed",
-                help="FO (Časový test) = osvobození po X letech.\nVždy danit = např. firma.\nNikdy nedanit = hrubý zisk."
+                help="FO (Časový test) = osvobození po X letech.\nVždy danit = např. firma.\nNikdy nedanit = hrubý zisk.",
+                key="tax_mode_input"
             )
             
             if tax_mode == "FO (Časový test)":
@@ -41,11 +43,11 @@ def render_sidebar():
 
             st.markdown("---")
             st.markdown("**Alternativní investice (ETF)**")
-            etf_comparison = st.checkbox("Porovnat s ETF", value=True)
+            etf_comparison = st.checkbox("Porovnat s ETF", value=True, key="etf_comparison")
             if etf_comparison:
-                etf_return = st.number_input("Očekávaný výnos ETF (% p.a.)", min_value=0.0, value=8.0, step=0.5)
-                initial_fx_rate = st.number_input("Kurz CZK/EUR (nákup)", min_value=10.0, value=25.0, step=0.1)
-                fx_appreciation = st.slider("Změna kurzu (% p.a.)", -5.0, 5.0, 0.0, 0.1, help="+% = posílení EUR, -% = oslabení EUR")
+                etf_return = st.number_input("Očekávaný výnos ETF (% p.a.)", min_value=0.0, value=8.0, step=0.5, key="etf_return")
+                initial_fx_rate = st.number_input("Kurz CZK/EUR (nákup)", min_value=10.0, value=25.0, step=0.1, key="initial_fx_rate")
+                fx_appreciation = st.slider("Změna kurzu (% p.a.)", -5.0, 5.0, 0.0, 0.1, help="+% = posílení EUR, -% = oslabení EUR", key="fx_appreciation")
             else:
                 etf_return = 0
                 initial_fx_rate = 25.0
@@ -55,17 +57,17 @@ def render_sidebar():
     with c_buy:
         st.subheader("1. Nákup a Růst")
         # Cena a poplatky (vstupní) - Number input (s tlačítky) pro přesné zadání
-        purchase_price_m = st.number_input("Kupní cena (mil. Kč)", min_value=0.5, value=5.0, step=0.1, format="%.2f", help="Celková pořizovací cena nemovitosti.")
+        purchase_price_m = st.number_input("Kupní cena (mil. Kč)", min_value=0.5, value=5.0, step=0.1, format="%.2f", help="Celková pořizovací cena nemovitosti.", key="purchase_price_m")
         purchase_price = purchase_price_m * 1_000_000
         
-        one_off_costs = st.number_input("Vstupní poplatky (Kč)", min_value=0, value=150_000, step=10_000, help="Provize RK, právní servis, rekonstrukce před nájmem.")
+        one_off_costs = st.number_input("Vstupní poplatky (Kč)", min_value=0, value=150_000, step=10_000, help="Provize RK, právní servis, rekonstrukce před nájmem.", key="one_off_costs")
         
         # Růst ceny - Slider (včetně záporných hodnot)
         st.markdown("**Očekávání trhu**")
-        appreciation_rate = st.slider("Růst ceny nemovitosti (% p.a.)", -5.0, 15.0, 3.0, 0.1, help="Roční změna tržní ceny. Záporná hodnota simuluje pokles trhu.")
+        appreciation_rate = st.slider("Růst ceny nemovitosti (% p.a.)", -5.0, 15.0, 3.0, 0.1, help="Roční změna tržní ceny. Záporná hodnota simuluje pokles trhu.", key="appreciation_rate")
         
         # Provize při prodeji - Number input
-        sale_fee_percent = st.number_input("Náklady na budoucí prodej (% z ceny)", 0.0, 10.0, 3.0, 0.5, format="%.1f", help="Rezerva na provizi RK a právní servis při prodeji.")
+        sale_fee_percent = st.number_input("Náklady na budoucí prodej (% z ceny)", 0.0, 10.0, 3.0, 0.5, format="%.1f", help="Rezerva na provizi RK a právní servis při prodeji.", key="sale_fee_percent")
 
     # --- C. NÁJEM (2. Sekce) ---
     with c_rent:
@@ -73,15 +75,15 @@ def render_sidebar():
         # Nájem a Náklady - Number inputs
         col_rent1, col_rent2 = st.columns(2)
         with col_rent1:
-            monthly_rent = st.number_input("Nájemné (Kč/měs)", min_value=0, value=18000, step=500, help="Čisté nájemné bez poplatků za energie.")
+            monthly_rent = st.number_input("Nájemné (Kč/měs)", min_value=0, value=18000, step=500, help="Čisté nájemné bez poplatků za energie.", key="monthly_rent")
         with col_rent2:
-            monthly_expenses = st.number_input("Náklady (Kč/měs)", min_value=0, value=3500, step=100, help="Fond oprav, pojištění, správa.")
+            monthly_expenses = st.number_input("Náklady (Kč/měs)", min_value=0, value=3500, step=100, help="Fond oprav, pojištění, správa.", key="monthly_expenses")
         
         # Neobsazenost - Slider
-        vacancy_months = st.slider("Neobsazenost (měsíce/rok)", 0.0, 6.0, 1.0, 0.1, help="Průměrná doba, kdy byt nebude generovat nájem.")
+        vacancy_months = st.slider("Neobsazenost (měsíce/rok)", 0.0, 6.0, 1.0, 0.1, help="Průměrná doba, kdy byt nebude generovat nájem.", key="vacancy_months")
         
         # Inflace - Slider
-        rent_growth_rate = st.slider("Inflace nájmu a nákladů (% p.a.)", 0.0, 15.0, 2.0, 0.1, help="Očekávaný roční růst nájemného i provozních nákladů.")
+        rent_growth_rate = st.slider("Inflace nájmu a nákladů (% p.a.)", 0.0, 15.0, 2.0, 0.1, help="Očekávaný roční růst nájemného i provozních nákladů.", key="rent_growth_rate")
 
     # --- D. HYPOTÉKA A STRATEGIE (3. Sekce) ---
     with c_strat:
@@ -90,16 +92,16 @@ def render_sidebar():
         # Doba a Úrok
         col_mort1, col_mort2 = st.columns(2)
         with col_mort1:
-            loan_term_years = st.slider("Doba splácení (roky)", 5, 40, 30, 1)
+            loan_term_years = st.slider("Doba splácení (roky)", 5, 40, 30, 1, key="loan_term_years")
         with col_mort2:
-            interest_rate = st.number_input("Úrok hypotéky (%)", min_value=0.0, max_value=20.0, value=5.4, step=0.1, format="%.2f")
+            interest_rate = st.number_input("Úrok hypotéky (%)", min_value=0.0, max_value=20.0, value=5.4, step=0.1, format="%.2f", key="interest_rate")
             
         st.markdown("---")
         st.write("**Optimalizátor Strategie**")
         st.caption("Vyberte rozsah LTV (páky), který jste ochotni akceptovat, a nechte model najít nejvýnosnější kombinaci.")
         
         # Range slider pro optimalizaci
-        opt_ltv_range = st.slider("Rozsah akceptovatelného LTV (%)", 0, 100, (20, 90))
+        opt_ltv_range = st.slider("Rozsah akceptovatelného LTV (%)", 0, 100, (20, 90), key="opt_ltv_range")
         
         if st.button("✨ Vypočítat a nastavit optimální strategii", type="primary"):
             best_irr = -999.0
@@ -164,9 +166,9 @@ def render_sidebar():
 
         st.markdown("---")
         # Finální vstupy strategie (uživatel je může doladit po optimalizaci)
-        holding_period = st.slider("Doba držení (roky)", 1, 30, step=1, key="holding_period_input")
+        holding_period = st.slider("Doba držení (roky)", 1, 30, value=10, step=1, key="holding_period_input")
         
-        target_ltv = st.slider("LTV (%)", 0, 100, step=5, key="target_ltv_input")
+        target_ltv = st.slider("LTV (%)", 0, 100, value=80, step=5, key="target_ltv_input")
         
         # Přepočet kapitálu podle LTV
         
@@ -197,6 +199,57 @@ def render_sidebar():
         down_payment = purchase_price - mortgage_amount
         
         st.caption(f"Vlastní kapitál: {down_payment/1_000_000:.3f} mil. Kč | Úvěr: {mortgage_amount/1_000_000:.3f} mil. Kč")
+
+    # --- E. SPRÁVA NASTAVENÍ (Export/Import) ---
+    st.sidebar.markdown("---")
+    with st.sidebar.expander("💾 Uložit / Načíst Modelaci", expanded=False):
+        # 1. Export
+        st.caption("Uložit aktuální nastavení do souboru:")
+        json_conf = scenario_manager.export_json()
+        st.download_button(
+            label="⬇️ Stáhnout nastavení (JSON)",
+            data=json_conf,
+            file_name="nastaveni_investice.json",
+            mime="application/json",
+            help="Stáhne aktuální nastavení vstupů do souboru ve formátu JSON."
+        )
+        
+        st.markdown("---")
+        
+        # 2. Import
+        st.caption("Načíst nastavení ze souboru:")
+        
+        # Callback funkce pro aplikaci importu (musí běžet před vykreslením widgetů v dalším běhu)
+        def apply_json_import():
+            if "uploaded_scenario_json" in st.session_state and st.session_state.uploaded_scenario_json:
+                try:
+                    string_data = st.session_state.uploaded_scenario_json.getvalue().decode("utf-8")
+                    if scenario_manager.load_from_json(string_data):
+                        st.session_state["import_status"] = ("success", "✅ Nastavení úspěšně načteno!")
+                    else:
+                        st.session_state["import_status"] = ("error", "❌ Chyba: Neplatný formát souboru.")
+                except Exception as e:
+                     st.session_state["import_status"] = ("error", f"❌ Chyba při načítání: {str(e)}")
+
+        uploaded_file = st.file_uploader(
+            "Vyberte soubor JSON", 
+            type=["json"], 
+            label_visibility="collapsed", 
+            key="uploaded_scenario_json"
+        )
+        
+        if uploaded_file is not None:
+             st.button("🔄 Aplikovat nastavení ze souboru", on_click=apply_json_import)
+             
+             # Zobrazení výsledku operace (pokud existuje z callbacku)
+             if "import_status" in st.session_state:
+                 status_type, msg = st.session_state.import_status
+                 if status_type == "success":
+                     st.success(msg)
+                 else:
+                     st.error(msg)
+                 # Po zobrazení smažeme, aby zpráva nezůstávala viset
+                 del st.session_state.import_status
 
     # Return inputs as a dictionary
     return {

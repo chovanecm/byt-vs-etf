@@ -2,10 +2,11 @@ import json
 import os
 import streamlit as st
 
+# Functionality for local file operations (might not be persistent in cloud)
 SCENARIO_FILE = "scenarios.json"
 
 def load_scenarios():
-    """Načte všechny scénáře ze souboru."""
+    """Načte všechny scénáře ze souboru (lokální)."""
     if not os.path.exists(SCENARIO_FILE):
         return {}
     
@@ -16,7 +17,7 @@ def load_scenarios():
         return {}
 
 def save_scenario(name, params):
-    """Uloží nový scénář nebo přepíše existující."""
+    """Uloží nový scénář nebo přepíše existující (lokální)."""
     scenarios = load_scenarios()
     scenarios[name] = params
     
@@ -24,7 +25,7 @@ def save_scenario(name, params):
         json.dump(scenarios, f, ensure_ascii=False, indent=4)
 
 def delete_scenario(name):
-    """Smaže scénář."""
+    """Smaže scénář (lokální)."""
     scenarios = load_scenarios()
     if name in scenarios:
         del scenarios[name]
@@ -33,25 +34,47 @@ def delete_scenario(name):
         return True
     return False
 
+# Functionality for State Management (Cloud/File Independent)
+
 def get_current_inputs():
-    """Vrátí slovník všech relevantních vstupů ze session state."""
-    # Seznam klíčů, které chceme ukládat
-    keys_to_save = [
-        "purchase_price_m", "input_type_radio", "target_ltv_slider", 
-        "down_payment_m", "one_off_costs", "interest_rate", "loan_term_years",
-        "monthly_rent", "monthly_expenses", "vacancy_months", "tax_rate",
-        "appreciation_rate", "rent_growth_rate", "holding_period_slider",
-        "etf_comparison", "etf_return", "initial_fx_rate", "fx_appreciation",
-        "time_test_enabled", "time_test_years", "sale_fee_percent"
-    ]
-    
+    """Vrátí slovník všech JSON-serializovatelných vstupů ze session state."""
     data = {}
-    for key in keys_to_save:
-        if key in st.session_state:
-            data[key] = st.session_state[key]
+    
+    # Klíče, které explicitně nechceme ukládat (např. výsledky importu, nahrané soubory)
+    excluded_keys = {"uploaded_scenario_json", "import_status", "opt_result", "FormSubmitter"}
+
+    for key, value in st.session_state.items():
+        if key in excluded_keys:
+            continue
+            
+        # Ukládáme jen základní datové typy
+        if isinstance(value, (str, int, float, bool, list, dict, tuple, type(None))):
+            data[key] = value
+            
     return data
 
 def apply_scenario(scenario_data):
     """Aplikuje data scénáře do session state."""
+    if not scenario_data:
+        return
+        
     for key, value in scenario_data.items():
+        # U range slideru musíme zajistit, že hodnota je tuple (v JSON se ukládá jako list)
+        if key == "opt_ltv_range" and isinstance(value, list):
+            value = tuple(value)
+            
         st.session_state[key] = value
+
+def export_json():
+    """Vrátí JSON string aktuální konfigurace."""
+    data = get_current_inputs()
+    return json.dumps(data, ensure_ascii=False, indent=4)
+
+def load_from_json(json_str):
+    """Načte konfiguraci z JSON stringu."""
+    try:
+        data = json.loads(json_str)
+        apply_scenario(data)
+        return True
+    except json.JSONDecodeError:
+        return False
