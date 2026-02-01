@@ -44,7 +44,7 @@ st.title("🏢 Analýza Investičního Bytu")
 # Mobile visual hint
 st.markdown(
     """
-    <div class="mobile-sidebar-hint" style="background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #ff4b4b; font-size: 0.9rem;">
+    <div class="mobile-sidebar-hint" style="background-color: #f0f2f6; color: #31333F; padding: 10px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #ff4b4b; font-size: 0.9rem;">
         <strong>⚙️ Nastavení výpočtu</strong><br>
         Pro zadání ceny, hypotéky a dalších parametrů klikněte na šipku <strong>&gt;</strong> vlevo nahoře.
     </div>
