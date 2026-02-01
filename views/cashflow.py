@@ -56,6 +56,5 @@ def render_cashflow_tab(inputs, metrics, derived_metrics):
         "📥 Stáhnout data (CSV)",
         csv,
         "investice_data.csv",
-        "text/csv",
-        key='download-csv'
+        "text/csv"
     )
