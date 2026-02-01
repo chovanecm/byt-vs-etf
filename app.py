@@ -11,7 +11,7 @@ from views.comparison import render_comparison_tab
 from views.monte_carlo import render_monte_carlo_tab
 
 # Nastavení stránky
-st.set_page_config(page_title="Investiční kalkulačka", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Investiční kalkulačka", layout="wide", initial_sidebar_state="auto")
 
 # Zvětšení šířky sidebaru pomocí CSS (pouze na desktopu)
 st.markdown(
@@ -19,8 +19,8 @@ st.markdown(
     <style>
     @media (min-width: 992px) {
         [data-testid="stSidebar"] {
-            min-width: 500px;
-            max-width: 500px;
+            min-width: 500px !important;
+            max-width: 500px !important;
         }
     }
     </style>
