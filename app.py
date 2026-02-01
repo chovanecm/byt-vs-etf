@@ -28,7 +28,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Inicializace session state variables used in sidebar
+# Inicializace session state variables
 if "target_ltv_input" not in st.session_state:
     st.session_state["target_ltv_input"] = 80
 if "holding_period_input" not in st.session_state:

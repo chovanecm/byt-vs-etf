@@ -208,7 +208,7 @@ def render_strategy_tab(inputs, metrics, derived_metrics):
                         delta="Arbitrážní zisk",
                         delta_color="normal"
                     )
-                    st.info(f"I když zaplatíte vyšší úroky ({market_ref_rate}%) z celého dluhu, výnos z uvolněné hotovosti to překoná.")
+                    st.info(f"I když zaplatíte úroky ({market_ref_rate}%) z celého dluhu, výnos z uvolněné hotovosti to překoná.")
                 else:
                     st.error(f"⛔ **Nevýhodné:** Náklady převyšují výnosy.")
                     st.metric(
