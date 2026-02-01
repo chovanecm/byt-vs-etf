@@ -82,6 +82,26 @@ def render_strategy_tab(inputs, metrics, derived_metrics):
         fig_roe.add_vline(x=cross_year, line_width=1, line_dash="dash", line_color="red")
         fig_roe.add_annotation(x=cross_year, y=opportunity_cost_rate, text=f"Bod zlomu: Rok {cross_year}", showarrow=True, arrowhead=1)
 
+    # Vizualizace "zubu" časového testu (pokud existuje)
+    time_test_vars = inputs.get('time_test_config', {})
+    if time_test_vars.get('enabled', True):
+        tt_years = time_test_vars.get('years', 10)
+        # Spike je v roce, kdy se přechází z Taxed -> Exempt.
+        # V logice: Year = tt_years (např. 10). Net_Equity(10) zdaněno, Net_Equity(11) nezdaněno.
+        # Zisk za rok 11 (počítaný v řádku 10) obsahuje skok.
+        if tt_years in df_decision['Year'].values:
+            spike_val = df_decision.loc[df_decision['Year'] == tt_years, 'Marginal_ROE'].values[0]
+            fig_roe.add_annotation(
+                x=tt_years, 
+                y=spike_val,
+                text="Splnění časového testu (daň 0%)",
+                showarrow=True,
+                arrowhead=1,
+                ax=0,
+                ay=-40,
+                font=dict(color="green")
+            )
+
     fig_roe.update_layout(
         title="Kdy peníze 'zleniví'? (ROE vs Benchmark)",
         xaxis_title="Rok investice",

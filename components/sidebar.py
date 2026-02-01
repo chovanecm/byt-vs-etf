@@ -59,6 +59,16 @@ def render_sidebar():
                 initial_fx_rate = 25.0
                 fx_appreciation = 0
 
+            st.markdown("---")
+            st.markdown("**Inflace a Reálná hodnota**")
+            # DRY: Use existing rent_growth_rate as general inflation proxy
+            show_real_values = st.checkbox(
+                "Zobrazit v reálných cenách (očištěno o inflaci)", 
+                value=False, 
+                key="show_real_values",
+                help="Pro přepočet na 'dnešní ceny' bude použita hodnota 'Inflace nájmu a nákladů' z sekce Nájem."
+            )
+
     # --- B. PARAMETRY NÁKUPU (1. Sekce) ---
     with c_buy:
         st.subheader("1. Nákup a Růst")
@@ -176,9 +186,9 @@ def render_sidebar():
 
         st.markdown("---")
         # Finální vstupy strategie (uživatel je může doladit po optimalizaci)
-        holding_period = st.slider("Doba držení (roky)", 1, 30, value=10, step=1, key="holding_period_input")
+        holding_period = st.slider("Doba držení (roky)", 1, 30, step=1, key="holding_period_input")
         
-        target_ltv = st.slider("LTV (%)", 0, 100, value=80, step=5, key="target_ltv_input")
+        target_ltv = st.slider("LTV (%)", 0, 100, step=5, key="target_ltv_input")
         
         # Přepočet kapitálu podle LTV
         
@@ -218,6 +228,8 @@ def render_sidebar():
         "etf_return": etf_return,
         "initial_fx_rate": initial_fx_rate,
         "fx_appreciation": fx_appreciation,
+        "general_inflation_rate": rent_growth_rate, # DRY: Using rent_growth_rate
+        "show_real_values": show_real_values,
         "purchase_price": purchase_price,
         "one_off_costs": one_off_costs,
         "appreciation_rate": appreciation_rate,

@@ -81,6 +81,7 @@ initial_fx_rate = inputs['initial_fx_rate']
 fx_appreciation = inputs['fx_appreciation']
 time_test_config = inputs['time_test_config']
 sale_fee_percent = inputs['sale_fee_percent']
+general_inflation_rate = inputs.get('general_inflation_rate', 2.0)
 
 # --- Výpočty ---
 try:
@@ -103,7 +104,8 @@ try:
         initial_fx_rate=initial_fx_rate,
         fx_appreciation=fx_appreciation,
         time_test_vars=time_test_config,
-        sale_fee_percent=sale_fee_percent
+        sale_fee_percent=sale_fee_percent,
+        general_inflation_rate=general_inflation_rate
     )
 
     # Rozbalení výsledků pro UI
