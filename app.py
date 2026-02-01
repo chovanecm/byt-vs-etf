@@ -188,37 +188,105 @@ except Exception as e:
 
 # --- Zobrazení ---
 
-# Hlavní přehled (Upraveno s lepším vysvětlením)
-st.subheader("📊 Klíčové Metriky Nemovitosti")
-col1, col2, col3, col4, col5 = st.columns(5)
+# --- DASHBOARD (KISS Summary - Above Tabs) ---
+st.markdown("### 📊 Rychlý přehled: Vyplatí se to?")
+kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
-with col1:
-    st.metric(label="Měsíční Cashflow", value=f"{int(monthly_cashflow):,} Kč", delta_color="normal")
-    st.markdown("<small style='color: grey'>Kolik vám měsíčně zbyde (nebo musíte doplatit) po zaplacení všeho.</small>", unsafe_allow_html=True)
-
-with col2:
-    st.metric(label="Měsíční splátka", value=f"{int(monthly_mortgage_payment):,} Kč")
-    st.markdown(f"<small style='color: grey'>Hypotéka na {mortgage_amount/1_000_000:.2f} mil. Kč.</small>", unsafe_allow_html=True)
-
-with col3:
-    st.metric(label="LTV Ratio", value=f"{ltv:.1f} %")
-    st.markdown("<small style='color: grey'>Kolik % ceny bytu vám půjčila banka.</small>", unsafe_allow_html=True)
-
-with col4:
-    st.metric(label="Cash-on-Cash Return", value=f"{cash_on_cash:.1f} %")
-    st.markdown("<small style='color: grey'>Kolik % z vašich vložených peněz se vám vrátí každý rok jen z nájmu.</small>", unsafe_allow_html=True)
-
-with col5:
-    st.metric(label="Levered IRR (Roční)", value=f"{irr:.2f} %")
-    st.markdown("<small style='color: grey'>Reálný roční úrok vašich peněz vč. prodeje a zhodnocení.</small>", unsafe_allow_html=True)
+with kpi1:
+    st.metric(
+        label="💰 Měsíční Cashflow",
+        value=f"{int(monthly_cashflow):,} Kč",
+        delta="Do kapsy" if monthly_cashflow > 0 else "Dotujete",
+        delta_color="normal" if monthly_cashflow > 0 else "inverse",
+        help="To, co vás nejvíc zajímá. Zbyde vám na kávu, nebo musíte sáhnout do výplaty?"
+    )
+    
+with kpi2:
+    st.metric(
+        label="📈 Roční výnos (IRR)",
+        value=f"{irr:.2f} %",
+        help="Internal Rate of Return - Skutečný 'úrok', který vám tato investice vydělává (včetně růstu ceny)."
+    )
+    
+with kpi3:
+    st.metric(
+        label="🏦 Čistý zisk (za celou dobu)",
+        value=f"{int(total_profit / 1_000_000):.2f} mil. Kč",
+        help=f"O tolik budete bohatší za {holding_period} let (po zaplacení banky, daní a oprav)."
+    )
+    
+with kpi4:
+     # Verdikt: Vyplatí se to?
+     # Kombinace Výnosu a Benchmarku
+     is_positive_cf = monthly_cashflow >= 0
+     beats_benchmark = irr > (etf_return if etf_comparison else 0)
+     
+     if beats_benchmark and is_positive_cf:
+         st.success("✅ **ANO, VYPLATÍ SE**")
+         st.caption("Investice vydělává více než benchmark a platí se sama.")
+     elif beats_benchmark and not is_positive_cf:
+         st.warning("⚠️ **ANO, ALE DOTUJETE**")
+         st.caption(f"Vyděláte, ale měsíčně doplácíte {int(abs(monthly_cashflow)):,} Kč.")
+     elif not beats_benchmark and is_positive_cf:
+         st.info("🤔 **NIŽŠÍ VÝNOS**")
+         st.caption("Byt se sice zaplatí sám, ale vaše alternativa (např. ETF) by vydělala víc.")
+     else:
+         st.error(f"⛔ **NEVYPLATÍ SE**")
+         st.caption("Proděláváte na provozu a výnos je nižší než benchmark.")
 
 st.divider()
 
-# Záložky pro různé pohledy
-tab1, tab_strat, tab2, tab3, tab4 = st.tabs(["📈 Analýza a Grafy", "🔮 Strategie a Rozhodování", "📊 Data a Cashflow", "⚖️ Porovnání s ETF", "🎲 Monte Carlo"])
+# --- TABS ---
+# Definujeme taby pouze jednou. Původní definice nad tímto blokem pravděpodobně zůstala a způsobila duplicitu.
+# Zkontrolujte, zda ve skriptu nejsou definovány 'tab1, tab2...' vícekrát.
+t_analysis, t_cashflow, t_strategy, t_compare, t_monte = st.tabs([
+    "📊 Analýza Investice", 
+    "💰 Cashflow Detail", 
+    "🔮 Strategie & Rozhodování", 
+    "⚖️ Porovnání", 
+    "🎲 Monte Carlo (Riziko)"
+])
 
-with tab1:
+with t_analysis:
+    # Hlavní přehled (Původní detailní metriky)
+    st.subheader("Detailní Metriky Nemovitosti")
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    with col1:
+        st.metric(label="Měsíční Cashflow", value=f"{int(monthly_cashflow):,} Kč", delta_color="normal")
+        st.caption("Čistý měsíční tok peněz")
+
+    with col2:
+        st.metric(label="Měsíční splátka", value=f"{int(monthly_mortgage_payment):,} Kč")
+        st.caption(f"Hypotéka na {mortgage_amount/1_000_000:.2f} mil.")
+
+    with col3:
+        st.metric(label="LTV (Páka)", value=f"{ltv:.1f} %")
+        st.caption("Podíl cizích peněz")
+
+    with col4:
+        st.metric(label="Cash-on-Cash", value=f"{cash_on_cash:.1f} %")
+        st.caption("Výnos z nájmu vůči vkladu")
+
+    with col5:
+        st.metric(label="Levered IRR (Roční)", value=f"{irr:.2f} %")
+        st.caption("Reálný roční úrok vašich peněz vč. prodeje a zhodnocení.")
+
+    st.divider()
+
     render_analysis_tab(inputs, metrics, derived_metrics)
+    
+with t_cashflow:
+    render_cashflow_tab(inputs, metrics, derived_metrics)
+
+with t_strategy:
+    render_strategy_tab(inputs, metrics, derived_metrics)
+    
+with t_compare:
+    render_comparison_tab(inputs, metrics, derived_metrics)
+    
+with t_monte:
+    render_monte_carlo_tab(inputs, metrics)
 
 with tab_strat:
     render_strategy_tab(inputs, metrics, derived_metrics)

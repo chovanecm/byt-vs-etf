@@ -83,12 +83,14 @@ def render_sidebar():
         with col_rent2:
             monthly_expenses = st.number_input("Náklady (Kč/měs)", min_value=0, value=3500, step=100, help="Fond oprav, pojištění, správa.", key="monthly_expenses")
         
-        # Neobsazenost - Slider
-        vacancy_months = st.slider("Neobsazenost (měsíce/rok)", 0.0, 6.0, 1.0, 0.1, help="Průměrná doba, kdy byt nebude generovat nájem.", key="vacancy_months")
-        
-        # Inflace - Slider
-        rent_growth_rate = st.slider("Inflace nájmu a nákladů (% p.a.)", 0.0, 15.0, 2.0, 0.1, help="Očekávaný roční růst nájemného i provozních nákladů.", key="rent_growth_rate")
-
+        # Jednoduchý přepínač pro pokročilé nastavení nájmu
+        with st.expander("⚙️ Pokročilé nastavení nájmu (Neobsazenost, Inflace)"):
+             # Neobsazenost - Slider
+            vacancy_months = st.slider("Neobsazenost (měsíce/rok)", 0.0, 6.0, 1.0, 0.1, help="Průměrná doba, kdy byt nebude generovat nájem.", key="vacancy_months")
+            
+            # Inflace - Slider
+            rent_growth_rate = st.slider("Inflace nájmu a nákladů (% p.a.)", 0.0, 15.0, 2.0, 0.1, help="Očekávaný roční růst nájemného i provozních nákladů.", key="rent_growth_rate")
+            
     # --- D. HYPOTÉKA A STRATEGIE (3. Sekce) ---
     with c_strat:
         st.subheader("3. Hypotéka a Strategie")
@@ -101,72 +103,74 @@ def render_sidebar():
             interest_rate = st.number_input("Úrok hypotéky (%)", min_value=0.0, max_value=20.0, value=5.4, step=0.1, format="%.2f", key="interest_rate")
             
         st.markdown("---")
-        st.write("**Optimalizátor Strategie**")
-        st.caption("Vyberte rozsah LTV (páky), který jste ochotni akceptovat, a nechte model najít nejvýnosnější kombinaci.")
         
-        # Range slider pro optimalizaci
-        opt_ltv_range = st.slider("Rozsah akceptovatelného LTV (%)", 0, 100, (20, 90), key="opt_ltv_range")
-        
-        if st.button("✨ Vypočítat a nastavit optimální strategii", type="primary"):
-            best_irr = -999.0
-            best_ltv = 0
-            best_years = 0
+        with st.expander("🤖 Optimalizátor Strategie (BETA)", expanded=False):
+            st.write("**Najít nejlepší nastavení**")
+            st.caption("Vyberte rozsah LTV (páky), který jste ochotni akceptovat, a nechte model najít nejvýnosnější kombinaci.")
             
-            progress_bar = st.progress(0)
-            # Rozsah z oboustranného slideru
-            min_ltv_opt, max_ltv_opt = opt_ltv_range
-            ltv_range = range(min_ltv_opt, max_ltv_opt + 1, 5)
-            total_steps = len(ltv_range)
+            # Range slider pro optimalizaci
+            opt_ltv_range = st.slider("Rozsah akceptovatelného LTV (%)", 0, 100, (20, 90), key="opt_ltv_range")
             
-            for i, try_ltv in enumerate(ltv_range):
-                progress_bar.progress((i + 1) / total_steps)
+            if st.button("✨ Vypočítat a nastavit optimální strategii", type="primary"):
+                best_irr = -999.0
+                best_ltv = 0
+                best_years = 0
                 
-                for try_year in range(1, 31):
-                    try_down_payment = purchase_price * (1 - try_ltv / 100)
-                    time_test_config = {"enabled": time_test_enabled, "years": time_test_years}
+                progress_bar = st.progress(0)
+                # Rozsah z oboustranného slideru
+                min_ltv_opt, max_ltv_opt = opt_ltv_range
+                ltv_range = range(min_ltv_opt, max_ltv_opt + 1, 5)
+                total_steps = len(ltv_range)
+                
+                for i, try_ltv in enumerate(ltv_range):
+                    progress_bar.progress((i + 1) / total_steps)
                     
-                    res = calculations.calculate_metrics(
-                        purchase_price=purchase_price,
-                        down_payment=try_down_payment,
-                        one_off_costs=one_off_costs,
-                        interest_rate=interest_rate,
-                        loan_term_years=loan_term_years,
-                        monthly_rent=monthly_rent,
-                        monthly_expenses=monthly_expenses,
-                        vacancy_months=vacancy_months,
-                        tax_rate=tax_rate, 
-                        appreciation_rate=appreciation_rate,
-                        rent_growth_rate=rent_growth_rate,
-                        holding_period=try_year,
-                        etf_comparison=False,
-                        etf_return=0,
-                        initial_fx_rate=25,
-                        fx_appreciation=0,
-                        time_test_vars=time_test_config,
-                        sale_fee_percent=sale_fee_percent
-                    )
-                    
-                    if res['irr'] > best_irr:
-                        best_irr = res['irr']
-                        best_ltv = try_ltv
-                        best_years = try_year
-            
-            progress_bar.empty()
-            st.session_state['opt_result'] = {
-                'ltv': best_ltv,
-                'years': best_years,
-                'irr': best_irr
-            }
-            
-        # Zobrazení výsledku hledání
-        if 'opt_result' in st.session_state:
-            res = st.session_state['opt_result']
-            st.info(f"💡 Nalezené optimum: LTV **{res['ltv']}%** na **{res['years']} let** (IRR {res['irr']:.2f}%)")
-            
-            if st.button("⬇️ Aplikovat optimum"):
-                 st.session_state['target_ltv_input'] = res['ltv']
-                 st.session_state['holding_period_input'] = res['years']
-                 st.rerun()
+                    for try_year in range(1, 31):
+                        try_down_payment = purchase_price * (1 - try_ltv / 100)
+                        time_test_config = {"enabled": time_test_enabled, "years": time_test_years}
+                        
+                        res = calculations.calculate_metrics(
+                            purchase_price=purchase_price,
+                            down_payment=try_down_payment,
+                            one_off_costs=one_off_costs,
+                            interest_rate=interest_rate,
+                            loan_term_years=loan_term_years,
+                            monthly_rent=monthly_rent,
+                            monthly_expenses=monthly_expenses,
+                            vacancy_months=vacancy_months,
+                            tax_rate=tax_rate, 
+                            appreciation_rate=appreciation_rate,
+                            rent_growth_rate=rent_growth_rate,
+                            holding_period=try_year,
+                            etf_comparison=False,
+                            etf_return=0,
+                            initial_fx_rate=25,
+                            fx_appreciation=0,
+                            time_test_vars=time_test_config,
+                            sale_fee_percent=sale_fee_percent
+                        )
+                        
+                        if res['irr'] > best_irr:
+                            best_irr = res['irr']
+                            best_ltv = try_ltv
+                            best_years = try_year
+                
+                progress_bar.empty()
+                st.session_state['opt_result'] = {
+                    'ltv': best_ltv,
+                    'years': best_years,
+                    'irr': best_irr
+                }
+                
+            # Zobrazení výsledku hledání
+            if 'opt_result' in st.session_state:
+                res = st.session_state['opt_result']
+                st.info(f"💡 Nalezené optimum: LTV **{res['ltv']}%** na **{res['years']} let** (IRR {res['irr']:.2f}%)")
+                
+                if st.button("⬇️ Aplikovat optimum"):
+                     st.session_state['target_ltv_input'] = res['ltv']
+                     st.session_state['holding_period_input'] = res['years']
+                     st.rerun()
 
         st.markdown("---")
         # Finální vstupy strategie (uživatel je může doladit po optimalizaci)
