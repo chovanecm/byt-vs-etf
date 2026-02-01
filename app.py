@@ -60,6 +60,19 @@ with st.sidebar.expander("🏠 Nájem a provoz", expanded=True):
     monthly_expenses = st.number_input("Měsíční náklady (Kč)", min_value=0, value=3_500, step=100, help="Fond oprav, pojištění, správa, daň z nemovitosti")
     vacancy_months = st.slider("Neobsazenost (měsíce/rok)", 0.0, 3.0, 1.0, 0.1, help="Průměrný počet měsíců v roce, kdy byt nevydělává.")
 
+# Sekce 2b: Daně a Poplatky
+with st.sidebar.expander("💸 Daně a Poplatky", expanded=False):
+    tax_rate = st.number_input("Daň z příjmu (%)", min_value=0.0, max_value=100.0, value=15.0, step=1.0, help="Sazba daně z příjmu (nájem i zisk z prodeje).", key="tax_rate")
+    
+    sale_fee_percent = st.number_input("Poplatek při prodeji (%)", min_value=0.0, max_value=20.0, value=3.0, step=0.5, help="Např. provize realitní kanceláři (z prodejní ceny).", key="sale_fee_percent")
+
+    st.markdown("---")
+    time_test_enabled = st.checkbox("Zohlednit časový test", value=True, help="Osvobození od daně ze zisku při prodeji po určité době.", key="time_test_enabled")
+    if time_test_enabled:
+        time_test_years = st.number_input("Délka časového testu (roky)", min_value=0, value=10, step=1, key="time_test_years")
+    else:
+        time_test_years = 10 # Default fall
+
 # Sekce 3: Projekce (Trh)
 with st.sidebar.expander("📈 Tržní predikce", expanded=False):
     appreciation_rate = st.slider("Růst ceny nemovitosti (% p.a.)", 0.0, 10.0, 3.0, 0.1)
@@ -107,6 +120,7 @@ with st.sidebar.expander("✨ Optimalizace Strategie", expanded=False):
                 try_down_payment = purchase_price * (1 - try_ltv / 100)
                 
                 # Předpoklad: Standardní daň 15% (není v UI)
+                time_test_config = {"enabled": time_test_enabled, "years": time_test_years}
                 res = calculations.calculate_metrics(
                     purchase_price=purchase_price,
                     down_payment=try_down_payment,
@@ -116,14 +130,15 @@ with st.sidebar.expander("✨ Optimalizace Strategie", expanded=False):
                     monthly_rent=monthly_rent,
                     monthly_expenses=monthly_expenses,
                     vacancy_months=vacancy_months,
-                    tax_rate=15.0, 
+                    tax_rate=tax_rate, 
                     appreciation_rate=appreciation_rate,
                     rent_growth_rate=rent_growth_rate,
                     holding_period=try_year,
                     etf_comparison=False,
                     etf_return=0,
                     initial_fx_rate=25,
-                    fx_appreciation=0
+                    fx_appreciation=0,
+                    time_test_vars=time_test_config
                 )
                 
                 if res['irr'] > best_irr:
@@ -151,148 +166,117 @@ with st.sidebar.expander("✨ Optimalizace Strategie", expanded=False):
 
 
 # --- Výpočty ---
+# (Všechna logika je nyní v modulu calculations.py pro zachování Orthogonality)
 
-# 1. Splátka hypotéky
-if mortgage_amount > 0:
-    monthly_rate = (interest_rate / 100) / 12
-    num_payments = loan_term_years * 12
-    monthly_mortgage_payment = npf.pmt(monthly_rate, num_payments, -mortgage_amount)
-else:
-    monthly_mortgage_payment = 0
+try:
+    # Konfigurace pro časový test
+    time_test_config = {"enabled": time_test_enabled, "years": time_test_years}
 
-# 2. Měsíční Cashflow
-# Zohlednění neobsazenosti: (Nájem * (12 - neobsazenost) - Náklady * 12 - Splátky * 12) / 12 ... přepočteno na průměrný měsíc
-annual_gross_rent = monthly_rent * (12 - vacancy_months)
-annual_expenses_total = monthly_expenses * 12
-annual_mortgage_payment = monthly_mortgage_payment * 12
+    # Volání centrální výpočetní funkce
+    metrics = calculations.calculate_metrics(
+        purchase_price=purchase_price,
+        down_payment=down_payment,
+        one_off_costs=one_off_costs,
+        interest_rate=interest_rate,
+        loan_term_years=loan_term_years,
+        monthly_rent=monthly_rent,
+        monthly_expenses=monthly_expenses,
+        vacancy_months=vacancy_months,
+        tax_rate=tax_rate,
+        appreciation_rate=appreciation_rate,
+        rent_growth_rate=rent_growth_rate,
+        holding_period=holding_period,
+        etf_comparison=etf_comparison,
+        etf_return=etf_return,
+        initial_fx_rate=initial_fx_rate,
+        fx_appreciation=fx_appreciation,
+        time_test_vars=time_test_config,
+        sale_fee_percent=sale_fee_percent
+    )
 
-annual_cashflow_year1 = annual_gross_rent - annual_mortgage_payment - annual_expenses_total
-monthly_cashflow = annual_cashflow_year1 / 12 # Průměrné měsíční CF v prvním roce
-
-# 3. Metriky výnosnosti
-net_yield = ((annual_gross_rent - annual_expenses_total) / (purchase_price + one_off_costs)) * 100 if purchase_price > 0 else 0
-
-initial_investment = down_payment + one_off_costs
-cash_on_cash = (annual_cashflow_year1 / initial_investment) * 100 if initial_investment > 0 else 0
-
-# LTV (Loan-to-Value)
-ltv = (mortgage_amount / purchase_price) * 100 if purchase_price > 0 else 0
-
-# Alternativní investice do ETF
-if etf_comparison:
-    # Přepočet počáteční investice do EUR
-    etf_balance_eur = initial_investment / initial_fx_rate
-    etf_values_czk = []
+    # Rozbalení výsledků pro UI
+    irr = metrics['irr']
+    total_profit = metrics['total_profit']
+    etf_irr = metrics['etf_irr']
+    monthly_cashflow = metrics['monthly_cashflow_y1']
+    tax_paid_y1 = metrics['tax_paid_y1']
+    capital_gains_tax = metrics['capital_gains_tax']
+    initial_investment = metrics['initial_investment']
     
-    # Pro IRR ETF
-    etf_cashflows_arr = [-initial_investment] # T0: Počáteční vklad v CZK
-    etf_total_invested_czk = initial_investment
+    # Series (časové řady)
+    series = metrics['series']
+    property_values = series['property_values']
+    mortgage_balances = series['mortgage_balances']
+    yearly_cashflows_arr = series['cashflows']
+    etf_values_czk = series['etf_values']
+    etf_cashflows_arr = series['etf_cashflows']
 
-# 4. Vývoj v čase (Projekce)
-
-# Připravíme data pro graf a IRR
-years = list(range(holding_period + 1))
-property_values = []
-mortgage_balances = []
-equity_values = []
-cumulative_cashflows = [0]
-yearly_cashflows_arr = [-initial_investment] # CF pro rok 0 (vč. nákladů nákupu)
-
-current_balance = mortgage_amount
-current_value = purchase_price
-total_cf_sum = 0
-current_monthly_rent = monthly_rent
-current_monthly_expenses = monthly_expenses
-
-for year in range(1, holding_period + 1):
-    # a) Hodnota nemovitosti
-    current_value = purchase_price * ((1 + appreciation_rate / 100) ** year)
-    property_values.append(current_value)
-
-    # Indexace nájmu a nákladů
-    if year > 1: # První rok už máme nastavený, rosteme od druhého
-        current_monthly_rent *= (1 + rent_growth_rate / 100)
-        current_monthly_expenses *= (1 + rent_growth_rate / 100)
-
-    # Cashflow pro daný rok
-    curr_annual_gross_rent = current_monthly_rent * (12 - vacancy_months)
-    curr_annual_expenses = current_monthly_expenses * 12
-    curr_annual_cf = curr_annual_gross_rent - annual_mortgage_payment - curr_annual_expenses
+    # --- Dopočítáváme pouze věci specifické pro UI zobrazení ---
     
-    yearly_cashflows_arr.append(curr_annual_cf)
-    
-    total_cf_sum += curr_annual_cf
-    cumulative_cashflows.append(total_cf_sum)
-
-    # b) Zůstatek hypotéky
+    # 1. Splátka hypotéky (pouze pro zobrazení v metrikách nahoře)
     if mortgage_amount > 0:
-        period_months = year * 12
-        if period_months >= num_payments:
-             rem_balance = 0
-        else:
-             rem_balance = npf.fv(monthly_rate, period_months, monthly_mortgage_payment, -mortgage_amount)
-        if rem_balance < 0: rem_balance = 0
+        monthly_rate_display = (interest_rate / 100) / 12
+        num_payments_display = loan_term_years * 12
+        monthly_mortgage_payment = npf.pmt(monthly_rate_display, num_payments_display, -mortgage_amount)
     else:
-        rem_balance = 0
+        monthly_mortgage_payment = 0
+
+    # 2. Metriky Year 1
+    annual_gross_rent = monthly_rent * (12 - vacancy_months)
+    annual_expenses_total = monthly_expenses * 12
+    # Cash-on-Cash
+    annual_cashflow_year1 = monthly_cashflow * 12
+    cash_on_cash = (annual_cashflow_year1 / initial_investment) * 100 if initial_investment > 0 else 0
+    # LTV
+    ltv = (mortgage_amount / purchase_price) * 100 if purchase_price > 0 else 0
+
+    # 3. Odvozené časové řady pro grafy
+    # Equity = Hodnota - Dluh
+    equity_values = [val - dept for val, dept in zip(property_values, mortgage_balances)]
+
+    # 4. Finální hodnoty pro reporty
+    sale_price = property_values[-1]
+    final_mortgage_balance = mortgage_balances[-1]
     
-    mortgage_balances.append(rem_balance)
+    # Cistý výnos z prodeje (Net Sale Proceeds)
+    # Známe: total_profit = total_cf_sum + sale_proceeds_net - initial_investment
+    # Tedy: total_cf_sum = total_profit - sale_proceeds_net + initial_investment
+    # Pozn: V calculations se sale_proceeds počítá čisté. Vraťme se k logice calculations.
+    # sale_proceeds v metrikách už JE net. Ale calculations je neobsahuje samostatně ve výstupu (jen v cashflows a total_profit).
+    # Rekonstrukce dle calculations logiky:
+    final_sale_fee = sale_price * (sale_fee_percent / 100.0)
+    sale_proceeds_net = sale_price - final_mortgage_balance - final_sale_fee - capital_gains_tax
+    total_cf_sum = total_profit - sale_proceeds_net + initial_investment
+
+    # ETF Metriky pro tabulky
+    final_etf_value_czk = 0
+    etf_profit = 0
+    etf_total_invested_czk = 0
     
-    # c) Equity
-    equity = current_value - rem_balance
-    equity_values.append(equity)
-    
-    # d) ETF Výpočet (s reinvestováním dotací)
-    if etf_comparison:
-        # 1. Zhodnocení EUR zůstatku za tento rok
-        etf_balance_eur *= (1 + etf_return / 100)
+    if etf_comparison and len(etf_values_czk) > 0:
+        final_etf_value_czk = etf_values_czk[-1]
         
-        # 2. Reinvestice (DCA): Pokud nemovitost musím dotovat (CF < 0), 
-        # v alternativním scénáři tyto peníze investuji do ETF.
-        year_contribution_czk = 0
-        if curr_annual_cf < 0:
-            year_contribution_czk = abs(curr_annual_cf)
-            
-            # Přepočet dotace na EUR podle aktuálního kurzu v daném roce
-            current_fx_rate = initial_fx_rate * ((1 + fx_appreciation / 100) ** year)
-            contribution_eur = year_contribution_czk / current_fx_rate
-            
-            # Přidání k zůstatku (předpoklad: investováno v průběhu roku, pro zjednodušení na konci)
-            etf_balance_eur += contribution_eur
-            etf_total_invested_czk += year_contribution_czk
+        # Celkem investováno do ETF = Initial + Suma(-Contributions)
+        # Contributions jsou v etf_cashflows_arr[1:-1] a castecne v [-1]
+        # Jednodušší: Profit = Final Value - Total Invested
+        # Známe IRR a toky, ale Total Invested není přímo v metrics.
+        # Můžeme sečíst záporné toky v etf_cashflows_arr (kromě té "fiktivní" finální, kterou tam možná calculations dává, ale calculations vrací raw pole?)
+        # Calculations: etf_cashflows_arr[-1] += final_etf_value_czk.
+        # Takže odečteme final value od sumy toků, abychom dostali jen investice (které jsou záporné).
+        sum_of_flows = sum(etf_cashflows_arr)
+        # sum_of_flows = (-Invested) + FinalValue
+        # Invested = FinalValue - sum_of_flows
+        etf_total_invested_czk = final_etf_value_czk - sum_of_flows
         
-        # 3. Přepočet celkové hodnoty zpět do CZK pro graf
-        current_fx_rate_end = initial_fx_rate * ((1 + fx_appreciation / 100) ** year)
-        etf_value_now_czk = etf_balance_eur * current_fx_rate_end
-        etf_values_czk.append(etf_value_now_czk)
-        
-        # 4. Záznam toku pro IRR (-výdaj)
-        etf_cashflows_arr.append(-year_contribution_czk)
+        etf_profit = final_etf_value_czk - etf_total_invested_czk
+        etf_roi = (etf_profit / etf_total_invested_czk) * 100 if etf_total_invested_czk > 0 else 0
 
+    if capital_gains_tax > 0:
+        st.info(f"ℹ️ Uplatněna daň ze zisku ({tax_rate} %) ve výši **{capital_gains_tax/1_000_000:.2f} mil. Kč** (nesplněn časový test {time_test_years} let).")
 
-# Přidání prodejní ceny do posledního roku cashflow pro IRR
-sale_price = property_values[-1]
-final_mortgage_balance = mortgage_balances[-1]
-sale_proceeds = sale_price - final_mortgage_balance
-
-# Upravíme poslední tok v poli pro IRR
-yearly_cashflows_arr[-1] += sale_proceeds
-irr = npf.irr(yearly_cashflows_arr) * 100
-total_profit = total_cf_sum + sale_proceeds - initial_investment # Zde pozor: total_cf_sum už obsahuje ty záporné toky, takže je to OK.
-
-# Dopočet ETF metrik
-if etf_comparison:
-    final_etf_value_czk = etf_values_czk[-1]
-    
-    # Pro IRR ETF musíme na konec přidat finální hodnotu (jako "prodej" portfolia)
-    # Pozor: etf_cashflows_arr má zatím jen vklady [-Init, -Contrib1, -Contrib2...]
-    # Musíme k poslednímu prvku (nebo jako nový prvek na konci) přidat výběr celé sumy.
-    # Aby to sedělo časově s nemovitostí:
-    # yearly_cashflows_arr má délku N+1 (0..N).
-    # etf_cashflows_arr má také mít délku N+1.
-    
-    etf_cashflows_arr[-1] += final_etf_value_czk # Přičtení finální hodnoty k poslednímu roku
-    
-    etf_irr = npf.irr(etf_cashflows_arr) * 100
+except Exception as e:
+    st.error(f"Chyba ve výpočtu: {e}")
+    st.stop()
     etf_profit = final_etf_value_czk - etf_total_invested_czk
     etf_roi = (etf_profit / etf_total_invested_czk) * 100 if etf_total_invested_czk > 0 else 0
 
@@ -345,21 +329,36 @@ with tab1:
     # Plotly Graf - 2 osy nebo skládaný
     fig = go.Figure()
 
+    # 1. Hodnota nemovitosti (Kontext, tenká čára)
     fig.add_trace(go.Scatter(
         x=df_chart["Rok"], 
         y=df_chart["Hodnota nemovitosti"],
         mode='lines',
-        name='Hodnota nemovitosti',
-        line=dict(color='#4CAF50', width=3)
+        name='Tržní cena nemovitosti',
+        line=dict(color='#A5D6A7', width=2, dash='dot'), # Světlejší zelená, méně dominantní
+        legendgroup="property"
     ))
 
+    # 2. Vlastní kapitál v nemovitosti (Equity) - HLAVNÍ METRIKA
+    fig.add_trace(go.Scatter(
+        x=df_chart["Rok"], 
+        y=df_chart["Čisté jmění (Equity)"],
+        mode='lines',
+        name='Net Worth Nemovitost (Equity)',
+        line=dict(color='#2E7D32', width=4), # Silná tmavě zelená
+        legendgroup="property"
+    ))
+
+    # 3. Zůstatek hypotéky (Kontext)
     fig.add_trace(go.Scatter(
         x=df_chart["Rok"], 
         y=df_chart["Zůstatek hypotéky"],
         mode='lines',
         name='Zůstatek hypotéky',
-        line=dict(color='#FF5252', width=3, dash='dash'),
-        fill='tozeroy' # Vyplní oblast pod křivkou
+        line=dict(color='#EF9A9A', width=1), # Světle červená
+        fill='tozeroy', # Vyplní oblast pod křivkou
+        fillcolor='rgba(239, 154, 154, 0.2)',
+        legendgroup="debt"
     ))
 
     # Přidání ETF do grafu
@@ -368,12 +367,12 @@ with tab1:
             x=df_chart["Rok"], 
             y=etf_values_czk,
             mode='lines',
-            name='Hodnota ETF (IWDA v CZK)',
-            line=dict(color='#2196F3', width=3, dash='dot')
+            name='Net Worth ETF (Investovaný vlastní kap.)',
+            line=dict(color='#2196F3', width=4) # Silná modrá pro přímé porovnání s Equity
         ))
 
     fig.update_layout(
-        title=f"Porovnání investic v čase ({holding_period} let)",
+        title=f"Porovnání čistého majetku (Net Worth): Nemovitost vs. ETF",
         xaxis_title="Rok",
         yaxis_title="Hodnota (Kč)",
         legend_title="Legenda",
@@ -395,7 +394,7 @@ with tab1:
         **Složení majetku na konci:**
         - Odhadovaná tržní cena: **{int(final_value):,} Kč**
         - Zbývající dluh: **{int(final_debt):,} Kč**
-        - Čistá hodnota při prodeji: **{int(sale_proceeds):,} Kč**
+        - Čistá hodnota při prodeji: **{int(sale_proceeds_net):,} Kč**
         """)
 
     with res_col2:
@@ -496,8 +495,8 @@ with tab3:
             ],
             "Nemovitost 🏢": [
                 f"{int(initial_investment):,} Kč",
-                f"{int(initial_investment + abs(sum(x for x in yearly_cashflows_arr if x < 0) - initial_investment if yearly_cashflows_arr[0] < 0 else 0)):,} Kč", # Zjednodušený odhad invested
-                f"{int(sale_proceeds):,} Kč",
+                f"{int(initial_investment + abs(sum(x for x in yearly_cashflows_arr if x < 0)) - initial_investment):,} Kč", # Zjednodušený odhad invested
+                f"{int(sale_proceeds_net):,} Kč",
                 f"{int(total_profit):,} Kč",
                 f"{roi:.1f} %",
                 f"{irr:.2f} %",
@@ -548,7 +547,7 @@ with tab4:
                 monthly_rent=monthly_rent,
                 monthly_expenses=monthly_expenses,
                 vacancy_months=vacancy_months,
-                tax_rate=15.0, # Hardcoded assumption for simplicity
+                tax_rate=tax_rate, 
                 holding_period=holding_period,
                 initial_fx_rate=initial_fx_rate,
                 fx_appreciation=fx_appreciation,
@@ -560,7 +559,10 @@ with tab4:
                 # Volatilities
                 appreciation_rate_std=vol_app,
                 rent_growth_rate_std=vol_rent,
-                etf_return_std=vol_etf
+                etf_return_std=vol_etf,
+                time_test_enabled=time_test_enabled,
+                time_test_years=time_test_years,
+                sale_fee_percent=sale_fee_percent
             )
             
             # Parsing results

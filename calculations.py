@@ -6,8 +6,12 @@ def calculate_metrics(
     interest_rate, loan_term_years,
     monthly_rent, monthly_expenses, vacancy_months, tax_rate,
     appreciation_rate, rent_growth_rate, holding_period,
-    etf_comparison, etf_return, initial_fx_rate, fx_appreciation
+    etf_comparison, etf_return, initial_fx_rate, fx_appreciation,
+    time_test_vars=None, sale_fee_percent=0.0
 ):
+    if time_test_vars is None:
+        time_test_vars = {"enabled": True, "years": 10}
+
     mortgage_amount = max(0, purchase_price - down_payment)
     
     # 1. Splátka hypotéky
@@ -137,7 +141,24 @@ def calculate_metrics(
     # Results
     sale_price = property_values[-1]
     final_mortgage_balance = mortgage_balances[-1]
-    sale_proceeds = sale_price - final_mortgage_balance
+    
+    # 1. Sale Transaction Costs (e.g., Real Estate Agent fee)
+    sale_costs = sale_price * (sale_fee_percent / 100.0)
+    
+    # 2. Capital Gains Tax (Časový test)
+    capital_gains_tax = 0
+    if time_test_vars and time_test_vars.get("enabled", True):
+        if holding_period < time_test_vars.get("years", 10):
+            # Only taxable if held less than limit
+            total_acquisition_cost = purchase_price + one_off_costs
+            # Profit for tax = Sale Price - Sale Costs - Acquisition
+            profit_on_sale = sale_price - sale_costs - total_acquisition_cost
+            if profit_on_sale > 0:
+                capital_gains_tax = profit_on_sale * (tax_rate / 100)
+    
+    # 3. Net Sale Proceeds
+    # Proceeds = Sale Price - Mortgage - Sale Costs - Tax
+    sale_proceeds = sale_price - final_mortgage_balance - sale_costs - capital_gains_tax
     
     yearly_cashflows_arr[-1] += sale_proceeds
     
@@ -165,7 +186,16 @@ def calculate_metrics(
         "total_profit": total_profit,
         "etf_irr": etf_irr,
         "monthly_cashflow_y1": annual_cashflow_year1 / 12,
-        "tax_paid_y1": tax_y1
+        "tax_paid_y1": tax_y1,
+        "capital_gains_tax": capital_gains_tax,
+        "initial_investment": initial_investment,
+        "series": {
+            "property_values": property_values,
+            "mortgage_balances": mortgage_balances,
+            "cashflows": yearly_cashflows_arr, 
+            "etf_values": etf_values_czk,
+            "etf_cashflows": etf_cashflows_arr
+        }
     }
 
 def run_monte_carlo(
@@ -180,7 +210,9 @@ def run_monte_carlo(
     appreciation_rate_mean, rent_growth_rate_mean,
     etf_comparison, etf_return_mean,
     # Volatility params (Std Dev)
-    appreciation_rate_std, rent_growth_rate_std, etf_return_std
+    appreciation_rate_std, rent_growth_rate_std, etf_return_std,
+    # Tax params
+    time_test_enabled=True, time_test_years=10, sale_fee_percent=0.0
 ):
     results = []
     holding_years = int(holding_period)
@@ -194,6 +226,8 @@ def run_monte_carlo(
     if etf_comparison:
         etf_scenarios = np.random.normal(etf_return_mean, etf_return_std, size=(n_simulations, holding_years))
     
+    time_test_vars = {"enabled": time_test_enabled, "years": time_test_years}
+
     for i in range(n_simulations):
         # Extract specific scenario rates
         app_rates = app_scenarios[i]
@@ -216,7 +250,9 @@ def run_monte_carlo(
             etf_comparison=etf_comparison,
             etf_return=etf_rates,          # Passing array
             initial_fx_rate=initial_fx_rate,
-            fx_appreciation=fx_appreciation
+            fx_appreciation=fx_appreciation,
+            time_test_vars=time_test_vars,
+            sale_fee_percent=sale_fee_percent
         )
         results.append(res)
         

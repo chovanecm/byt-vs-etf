@@ -41,7 +41,8 @@ def get_current_inputs():
         "down_payment_m", "one_off_costs", "interest_rate", "loan_term_years",
         "monthly_rent", "monthly_expenses", "vacancy_months", "tax_rate",
         "appreciation_rate", "rent_growth_rate", "holding_period_slider",
-        "etf_comparison", "etf_return", "initial_fx_rate", "fx_appreciation"
+        "etf_comparison", "etf_return", "initial_fx_rate", "fx_appreciation",
+        "time_test_enabled", "time_test_years", "sale_fee_percent"
     ]
     
     data = {}
